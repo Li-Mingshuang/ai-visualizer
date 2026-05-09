@@ -1,0 +1,842 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<title>排序算法可视化</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #0f1117; color: #e0e0e0; font-family: 'Segoe UI', sans-serif; padding: 24px; }
+  h1 { text-align: center; font-size: 1.4rem; margin-bottom: 24px; color: #7eb8f7; letter-spacing: 2px; }
+
+  .controls {
+    display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; margin-bottom: 24px;
+  }
+  .btn {
+    padding: 8px 16px; border: 1px solid #444; border-radius: 6px;
+    background: #1e2130; color: #ccc; cursor: pointer; font-size: 0.85rem; transition: all 0.2s;
+  }
+  .btn:hover { background: #2a3050; color: #fff; border-color: #7eb8f7; }
+  .btn.active { background: #2a4a7f; color: #7eb8f7; border-color: #7eb8f7; }
+  .speed-wrap { display: flex; align-items: center; gap: 8px; color: #aaa; font-size: 0.85rem; }
+  input[type=range] { width: 100px; accent-color: #7eb8f7; }
+
+  .main { display: flex; gap: 16px; align-items: flex-start; justify-content: center; flex-wrap: wrap; }
+
+  /* 左：柱状图面板 */
+  .viz-panel {
+    background: #161923; border: 1px solid #2a2f45; border-radius: 12px;
+    padding: 20px; width: 480px; flex-shrink: 0;
+  }
+  .viz-title { font-size: 1rem; color: #7eb8f7; margin-bottom: 4px; }
+  .viz-desc { font-size: 0.75rem; color: #888; margin-bottom: 14px; min-height: 32px; }
+
+  .bars {
+    display: flex; align-items: flex-end; gap: 3px; height: 160px;
+    border-bottom: 1px solid #2a2f45; padding-bottom: 4px; margin-bottom: 14px;
+  }
+  .bar { flex: 1; border-radius: 3px 3px 0 0; position: relative; }
+  .bar.normal  { background: #3a6aad; }
+  .bar.compare { background: #f0b429; }
+  .bar.swap    { background: #e05c5c; }
+  .bar.sorted  { background: #4caf7d; }
+  .bar.pivot   { background: #c97ee0; }
+  .bar-label { position: absolute; bottom: -18px; left: 50%; transform: translateX(-50%); font-size: 9px; color: #666; }
+
+  .stats { display: flex; gap: 20px; font-size: 0.78rem; color: #888; }
+  .stats span { color: #bbb; }
+  .action-row { display: flex; gap: 10px; margin-top: 12px; }
+  .btn-sm { padding: 6px 14px; border: 1px solid #333; border-radius: 6px; background: #1e2130; color: #ccc; cursor: pointer; font-size: 0.8rem; }
+  .btn-sm:hover { background: #2a3050; }
+  .btn-sm.go { background: #1a3a6a; border-color: #3a6aad; color: #7eb8f7; }
+  .btn-sm.go:hover { background: #1e4a8a; }
+
+  /* 中：代码面板 */
+  .code-panel {
+    background: #161923; border: 1px solid #2a2f45; border-radius: 12px;
+    padding: 16px; width: 300px; flex-shrink: 0;
+  }
+  .code-panel h3 { color: #7eb8f7; font-size: 0.85rem; margin-bottom: 10px; }
+  .code-lines { font-family: 'Fira Code', 'Consolas', monospace; font-size: 0.75rem; line-height: 1.7; }
+  .code-line { padding: 1px 6px; border-radius: 3px; color: #8a9aaf; white-space: pre; }
+  .code-line.active { background: #2a3a1a; color: #b8e06a; border-left: 3px solid #7ec86a; padding-left: 3px; }
+  .code-line.dim { color: #3a4a5a; }
+
+  /* 右：变量面板 */
+  .var-panel {
+    background: #161923; border: 1px solid #2a2f45; border-radius: 12px;
+    padding: 16px; width: 220px; flex-shrink: 0;
+  }
+  .var-panel h3 { color: #7eb8f7; font-size: 0.85rem; margin-bottom: 10px; }
+  .var-row { display: flex; justify-content: space-between; align-items: center;
+    padding: 4px 0; border-bottom: 1px solid #1e2130; font-size: 0.78rem; }
+  .var-name { color: #c97ee0; font-family: monospace; }
+  .var-val { color: #f0b429; font-family: monospace; max-width: 130px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .var-val.changed { color: #e05c5c; }
+
+  /* 最右：信息面板 */
+  .info-panel {
+    background: #161923; border: 1px solid #2a2f45; border-radius: 12px;
+    padding: 16px; width: 180px; font-size: 0.82rem; flex-shrink: 0;
+  }
+  .info-panel h3 { color: #7eb8f7; margin-bottom: 10px; font-size: 0.85rem; }
+  .info-row { display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px solid #1e2130; color: #888; font-size: 0.75rem; }
+  .info-row span:last-child { color: #e0e0e0; }
+  .legend { margin-top: 14px; }
+  .legend h4 { color: #888; font-size: 0.72rem; margin-bottom: 6px; }
+  .leg-item { display: flex; align-items: center; gap: 6px; margin-bottom: 5px; font-size: 0.72rem; color: #aaa; }
+  .leg-dot { width: 10px; height: 10px; border-radius: 2px; flex-shrink: 0; }
+
+  /* Log 面板 */
+  .log-section {
+    max-width: 1240px; margin: 16px auto 0;
+  }
+  .log-toggle {
+    display: flex; align-items: center; gap: 8px; cursor: pointer;
+    padding: 8px 16px; background: #161923; border: 1px solid #2a2f45;
+    border-radius: 8px; font-size: 0.82rem; color: #888; user-select: none;
+    width: 100%;
+  }
+  .log-toggle:hover { border-color: #7eb8f7; color: #bbb; }
+  .log-toggle .arrow { transition: transform 0.2s; display: inline-block; }
+  .log-toggle.open .arrow { transform: rotate(90deg); }
+  .log-body {
+    display: none; background: #0d1018; border: 1px solid #2a2f45; border-top: none;
+    border-radius: 0 0 8px 8px; padding: 10px 14px;
+    height: 200px; overflow-y: auto; font-family: 'Fira Code','Consolas',monospace; font-size: 0.75rem;
+  }
+  .log-body.open { display: block; }
+  .log-entry { padding: 2px 0; border-bottom: 1px solid #131820; display: flex; gap: 12px; align-items: baseline; }
+  .log-step { color: #3a5a7a; min-width: 36px; }
+  .log-line { color: #7ec86a; min-width: 100px; }
+  .log-vars { color: #c8b87a; flex: 1; }
+  .log-action { min-width: 60px; }
+  .log-action.cmp  { color: #f0b429; }
+  .log-action.swap { color: #e05c5c; }
+  .log-action.done { color: #4caf7d; }
+  .log-clear { margin-left: auto; font-size: 0.72rem; color: #555; cursor: pointer; }
+  .log-clear:hover { color: #aaa; }
+</style>
+</head>
+<body>
+
+<h1>排序算法可视化</h1>
+
+<div class="controls">
+  <button class="btn active" onclick="selectAlgo('bubble', this)">冒泡</button>
+  <button class="btn" onclick="selectAlgo('cocktail', this)">鸡尾酒</button>
+  <button class="btn" onclick="selectAlgo('quick', this)">快排</button>
+  <button class="btn" onclick="selectAlgo('insertion', this)">插入</button>
+  <button class="btn" onclick="selectAlgo('binary_insertion', this)">折半插入</button>
+  <button class="btn" onclick="selectAlgo('shell', this)">希尔</button>
+  <button class="btn" onclick="selectAlgo('selection', this)">选择</button>
+  <button class="btn" onclick="selectAlgo('heap', this)">堆排</button>
+  <button class="btn" onclick="selectAlgo('merge', this)">归并</button>
+  <button class="btn" onclick="selectAlgo('counting', this)">计数</button>
+  <button class="btn" onclick="selectAlgo('radix', this)">基数</button>
+  <div class="speed-wrap">
+    <span>速度</span>
+    <input type="range" id="speedSlider" min="1" max="10" value="5" oninput="updateSpeed()">
+    <span id="speedLabel">5</span>
+  </div>
+</div>
+
+<div class="main">
+  <!-- 柱状图 -->
+  <div class="viz-panel">
+    <div class="viz-title" id="algoTitle">冒泡排序</div>
+    <div class="viz-desc" id="algoDesc">每轮在无序区边扫边交换，最大值冒到右边界。可提前终止（一轮无交换即有序）。</div>
+    <div class="bars" id="bars"></div>
+    <div style="height:20px"></div>
+    <div class="stats">
+      比较: <span id="cmpCount">0</span> &nbsp;
+      交换/移动: <span id="swapCount">0</span> &nbsp;
+      状态: <span id="statusText">就绪</span>
+    </div>
+    <div class="action-row">
+      <button class="btn-sm go" onclick="startSort()">▶ 开始</button>
+      <button class="btn-sm" onclick="resetArr()">↺ 重置</button>
+      <button class="btn-sm" onclick="newArr()">🔀 新数组</button>
+    </div>
+  </div>
+
+
+  <!-- 代码 -->
+  <div class="code-panel">
+    <h3>代码执行</h3>
+    <div class="code-lines" id="codeLines"></div>
+  </div>
+
+  <!-- 变量 -->
+  <div class="var-panel">
+    <h3>中间变量</h3>
+    <div id="varRows"></div>
+  </div>
+
+  <!-- 复杂度信息 -->
+  <div class="info-panel">
+    <h3>复杂度</h3>
+    <div class="info-row"><span>平均</span><span id="avgC">O(n²)</span></div>
+    <div class="info-row"><span>最好</span><span id="bestC">O(n)</span></div>
+    <div class="info-row"><span>最坏</span><span id="worstC">O(n²)</span></div>
+    <div class="info-row"><span>空间</span><span id="spaceC">O(1)</span></div>
+    <div class="info-row"><span>稳定</span><span id="stableC">✅</span></div>
+    <div class="info-row"><span>类别</span><span id="categoryC">交换类</span></div>
+    <div class="legend">
+      <h4>颜色说明</h4>
+      <div class="leg-item"><div class="leg-dot" style="background:#3a6aad"></div>未排序</div>
+      <div class="leg-item"><div class="leg-dot" style="background:#f0b429"></div>比较中</div>
+      <div class="leg-item"><div class="leg-dot" style="background:#e05c5c"></div>交换/移动</div>
+      <div class="leg-item"><div class="leg-dot" style="background:#c97ee0"></div>pivot</div>
+      <div class="leg-item"><div class="leg-dot" style="background:#4caf7d"></div>已就位</div>
+    </div>
+  </div>
+</div>
+
+<!-- Log 面板 -->
+<div class="log-section">
+  <div class="log-toggle" id="logToggle" onclick="toggleLog()">
+    <span class="arrow">▶</span>
+    <span>执行日志</span>
+    <span id="logCount" style="color:#555;margin-left:4px"></span>
+    <span class="log-clear" onclick="event.stopPropagation();clearLog()">清空</span>
+  </div>
+  <div class="log-body" id="logBody">
+    <div style="color:#555;font-size:0.75rem;padding:4px 0">点击「开始」后日志将在此显示...</div>
+  </div>
+</div>
+
+<script>
+const ALGOS = {
+  bubble:           { title:'冒泡排序',   desc:'每轮在无序区边扫边交换，最大值冒到右边界。可提前终止（一轮无交换即有序）。', avg:'O(n²)', best:'O(n)', worst:'O(n²)', space:'O(1)', stable:'✅', cat:'交换类' },
+  cocktail:         { title:'鸡尾酒排序', desc:'冒泡改进，双向扫描——先右冒最大值，再左沉最小值，对部分有序数据收敛更快。', avg:'O(n²)', best:'O(n)', worst:'O(n²)', space:'O(1)', stable:'✅', cat:'交换类' },
+  quick:            { title:'快速排序',   desc:'选 pivot 将数组分为两侧原地递归排序。平均 O(n log n)，最坏退化 O(n²)。', avg:'O(n log n)', best:'O(n log n)', worst:'O(n²)', space:'O(log n)', stable:'❌', cat:'交换类' },
+  insertion:        { title:'插入排序',   desc:'维护左侧有序区，每次取右侧元素向左找到正确位置后移动插入。', avg:'O(n²)', best:'O(n)', worst:'O(n²)', space:'O(1)', stable:'✅', cat:'插入类' },
+  binary_insertion: { title:'折半插入排序', desc:'插入排序改进：用二分查找确定插入位置，减少比较次数，移动次数不变。', avg:'O(n²)', best:'O(n log n)', worst:'O(n²)', space:'O(1)', stable:'✅', cat:'插入类' },
+  shell:            { title:'希尔排序',   desc:'插入排序泛化，先大步长分组插入，逐步缩小步长至1，避免小步慢挪。', avg:'O(n^1.3)', best:'O(n)', worst:'O(n²)', space:'O(1)', stable:'❌', cat:'插入类' },
+  selection:        { title:'选择排序',   desc:'每轮扫无序区找最小值，最后一次交换到边界。每轮最多1次交换，无法提前终止。', avg:'O(n²)', best:'O(n²)', worst:'O(n²)', space:'O(1)', stable:'❌', cat:'选择类' },
+  heap:             { title:'堆排序',     desc:'建堆 O(n)，每次取堆顶放末尾，sift-down 维护堆性质。原地 O(1) 空间。', avg:'O(n log n)', best:'O(n log n)', worst:'O(n log n)', space:'O(1)', stable:'❌', cat:'选择类' },
+  merge:            { title:'归并排序',   desc:'分治递归拆成单元素后合并，需 O(n) 额外空间，稳定且复杂度恒定。', avg:'O(n log n)', best:'O(n log n)', worst:'O(n log n)', space:'O(n)', stable:'✅', cat:'分治类' },
+  counting:         { title:'计数排序',   desc:'统计每个值出现次数后重建数组，不基于比较，适合值域 k 不大的整数。', avg:'O(n+k)', best:'O(n+k)', worst:'O(n+k)', space:'O(k)', stable:'✅', cat:'非比较类' },
+  radix:            { title:'基数排序',   desc:'按位从低到高多轮计数排序，适合多位整数，不基于比较。', avg:'O(nk)', best:'O(nk)', worst:'O(nk)', space:'O(n+k)', stable:'✅', cat:'非比较类' },
+};
+
+// 每个算法的伪代码，每行对应一个 lineId
+const CODES = {
+  bubble: [
+    { id:'outer',   text:'for i in range(n):' },
+    { id:'init',    text:'  swapped = False' },
+    { id:'inner',   text:'  for j in range(n-i-1):' },
+    { id:'cmp',     text:'    if arr[j] > arr[j+1]:' },
+    { id:'swap',    text:'      swap(arr[j], arr[j+1])' },
+    { id:'setflag', text:'      swapped = True' },
+    { id:'break',   text:'  if not swapped: break' },
+  ],
+  cocktail: [
+    { id:'init',    text:'lo, hi = 0, n-1' },
+    { id:'while',   text:'while lo < hi:' },
+    { id:'fwd',     text:'  for i in range(lo, hi):' },
+    { id:'cmp1',    text:'    if arr[i] > arr[i+1]: swap' },
+    { id:'dechi',   text:'  hi -= 1' },
+    { id:'bwd',     text:'  for i in range(hi, lo, -1):' },
+    { id:'cmp2',    text:'    if arr[i] < arr[i-1]: swap' },
+    { id:'inclo',   text:'  lo += 1' },
+    { id:'break',   text:'  if not swapped: break' },
+  ],
+  quick: [
+    { id:'base',    text:'if lo >= hi: return' },
+    { id:'pivot',   text:'pivot = arr[hi]' },
+    { id:'init',    text:'i = lo - 1' },
+    { id:'inner',   text:'for j in range(lo, hi):' },
+    { id:'cmp',     text:'  if arr[j] <= pivot:' },
+    { id:'swap',    text:'    i++; swap(arr[i], arr[j])' },
+    { id:'place',   text:'swap(arr[i+1], arr[hi])' },
+    { id:'recur',   text:'quicksort(lo, i); quicksort(i+2, hi)' },
+  ],
+  insertion: [
+    { id:'outer',   text:'for i in range(1, n):' },
+    { id:'key',     text:'  key = arr[i]' },
+    { id:'init',    text:'  j = i - 1' },
+    { id:'while',   text:'  while j >= 0 and arr[j] > key:' },
+    { id:'move',    text:'    arr[j+1] = arr[j]; j -= 1' },
+    { id:'place',   text:'  arr[j+1] = key' },
+  ],
+  binary_insertion: [
+    { id:'outer',   text:'for i in range(1, n):' },
+    { id:'key',     text:'  key = arr[i]; lo, hi = 0, i' },
+    { id:'while',   text:'  while lo < hi:' },
+    { id:'mid',     text:'    mid = (lo+hi) // 2' },
+    { id:'cmp',     text:'    if arr[mid] <= key: lo=mid+1' },
+    { id:'else',    text:'    else: hi = mid' },
+    { id:'move',    text:'  移动元素腾出位置' },
+    { id:'place',   text:'  arr[lo] = key' },
+  ],
+  shell: [
+    { id:'gap',     text:'gap = n // 2' },
+    { id:'while',   text:'while gap > 0:' },
+    { id:'outer',   text:'  for i in range(gap, n):' },
+    { id:'key',     text:'    key = arr[i]; j = i' },
+    { id:'inner',   text:'    while j >= gap and arr[j-gap] > key:' },
+    { id:'move',    text:'      arr[j] = arr[j-gap]; j -= gap' },
+    { id:'place',   text:'    arr[j] = key' },
+    { id:'decgap',  text:'  gap //= 2' },
+  ],
+  selection: [
+    { id:'outer',   text:'for i in range(n):' },
+    { id:'init',    text:'  min_idx = i' },
+    { id:'inner',   text:'  for j in range(i+1, n):' },
+    { id:'cmp',     text:'    if arr[j] < arr[min_idx]:' },
+    { id:'update',  text:'      min_idx = j' },
+    { id:'swap',    text:'  swap(arr[i], arr[min_idx])' },
+  ],
+  heap: [
+    { id:'build',   text:'# 建堆（从下往上 sift-down）' },
+    { id:'sift',    text:'for i in range(n//2-1, -1, -1):' },
+    { id:'siftcmp', text:'  sift_down(arr, i, n)' },
+    { id:'extract', text:'# 逐个取堆顶' },
+    { id:'outer',   text:'for i in range(n-1, 0, -1):' },
+    { id:'swap',    text:'  swap(arr[0], arr[i])' },
+    { id:'down',    text:'  sift_down(arr, 0, i)' },
+    { id:'cmp',     text:'  # 比较左右子节点取最大' },
+  ],
+  merge: [
+    { id:'base',    text:'if lo >= hi: return' },
+    { id:'mid',     text:'mid = (lo + hi) // 2' },
+    { id:'recur',   text:'merge_sort(lo, mid); merge_sort(mid+1, hi)' },
+    { id:'merge',   text:'# 合并两段' },
+    { id:'cmp',     text:'while i<=mid and j<=hi:' },
+    { id:'pick',    text:'  if arr[i]<=arr[j]: pick left' },
+    { id:'pickr',   text:'  else: pick right' },
+    { id:'write',   text:'写回原数组' },
+  ],
+  counting: [
+    { id:'range',   text:'offset=min(arr); k=max(arr)-offset+1' },
+    { id:'count',   text:'count = [0] * k' },
+    { id:'scan',    text:'for x in arr: count[x-offset] += 1' },
+    { id:'rebuild', text:'# 按 count 重建数组' },
+    { id:'write',   text:'for i,c in enumerate(count):' },
+    { id:'extend',  text:'  result.extend([i+offset]*c)' },
+  ],
+  radix: [
+    { id:'exp',     text:'exp = 1' },
+    { id:'while',   text:'while max_val // exp > 0:' },
+    { id:'count',   text:'  count = [0]*10' },
+    { id:'scan',    text:'  for x in arr: count[(x//exp)%10]++' },
+    { id:'prefix',  text:'  前缀和：count[i] += count[i-1]' },
+    { id:'build',   text:'  从右向左填充 output[]' },
+    { id:'copy',    text:'  arr = output' },
+    { id:'next',    text:'  exp *= 10' },
+  ],
+};
+
+let currentAlgo = 'bubble';
+let arr = [];
+let gen = null;
+let timer = null;
+let cmp = 0, swp = 0;
+let baseDelay = 120;
+let prevVars = {};
+
+function updateSpeed() {
+  const v = +document.getElementById('speedSlider').value;
+  document.getElementById('speedLabel').textContent = v;
+  baseDelay = Math.round(600 / v);
+}
+
+function selectAlgo(name, btn) {
+  currentAlgo = name;
+  document.querySelectorAll('.btn').forEach(b => b.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  const a = ALGOS[name];
+  document.getElementById('algoTitle').textContent = a.title;
+  document.getElementById('algoDesc').textContent = a.desc;
+  document.getElementById('avgC').textContent = a.avg;
+  document.getElementById('bestC').textContent = a.best;
+  document.getElementById('worstC').textContent = a.worst;
+  document.getElementById('spaceC').textContent = a.space;
+  document.getElementById('stableC').textContent = a.stable;
+  document.getElementById('categoryC').textContent = a.cat;
+  renderCode(name, null);
+  renderVars({});
+  prevVars = {};
+  resetArr();
+}
+
+function renderCode(algo, activeId) {
+  const lines = CODES[algo] || [];
+  const el = document.getElementById('codeLines');
+  el.innerHTML = lines.map(l => {
+    let cls = 'code-line';
+    if (activeId === l.id) cls += ' active';
+    return `<div class="${cls}">${escHtml(l.text)}</div>`;
+  }).join('');
+}
+
+function escHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function renderVars(vars) {
+  const el = document.getElementById('varRows');
+  if (!Object.keys(vars).length) { el.innerHTML = '<div style="color:#555;font-size:0.75rem;padding:4px 0">—</div>'; return; }
+  el.innerHTML = Object.entries(vars).map(([k, v]) => {
+    const changed = prevVars[k] !== undefined && prevVars[k] !== String(v);
+    return `<div class="var-row">
+      <span class="var-name">${k}</span>
+      <span class="var-val${changed?' changed':''}">${formatVal(v)}</span>
+    </div>`;
+  }).join('');
+  prevVars = Object.fromEntries(Object.entries(vars).map(([k,v])=>[k, String(v)]));
+}
+
+function formatVal(v) {
+  if (Array.isArray(v)) {
+    if (v.length > 8) return '[' + v.slice(0,8).join(',') + '…]';
+    return '[' + v.join(',') + ']';
+  }
+  return String(v);
+}
+
+function newArr() {
+  stopSort();
+  arr = Array.from({length: 20}, () => Math.floor(Math.random() * 90) + 10);
+  renderBars(arr, [], [], [], []);
+  cmp = 0; swp = 0;
+  document.getElementById('cmpCount').textContent = 0;
+  document.getElementById('swapCount').textContent = 0;
+  document.getElementById('statusText').textContent = '就绪';
+  renderCode(currentAlgo, null);
+  renderVars({});
+  prevVars = {};
+}
+
+function resetArr() {
+  stopSort();
+  if (!arr.length) { newArr(); return; }
+  renderBars(arr, [], [], [], []);
+  cmp = 0; swp = 0;
+  document.getElementById('cmpCount').textContent = 0;
+  document.getElementById('swapCount').textContent = 0;
+  document.getElementById('statusText').textContent = '就绪';
+  renderCode(currentAlgo, null);
+  renderVars({});
+  prevVars = {};
+}
+
+function stopSort() {
+  if (timer) { clearTimeout(timer); timer = null; }
+}
+
+function renderBars(a, comparing, swapping, sorted, pivot) {
+  const container = document.getElementById('bars');
+  const max = Math.max(...a);
+  container.innerHTML = '';
+  a.forEach((v, i) => {
+    const bar = document.createElement('div');
+    bar.className = 'bar';
+    if (pivot.includes(i)) bar.className += ' pivot';
+    else if (swapping.includes(i)) bar.className += ' swap';
+    else if (comparing.includes(i)) bar.className += ' compare';
+    else if (sorted.includes(i)) bar.className += ' sorted';
+    else bar.className += ' normal';
+    bar.style.height = (v / max * 150 + 10) + 'px';
+    const lbl = document.createElement('div');
+    lbl.className = 'bar-label';
+    lbl.textContent = v;
+    bar.appendChild(lbl);
+    container.appendChild(bar);
+  });
+}
+
+// ========== Step Generators ==========
+
+function* bubbleSteps(a) {
+  const n = a.length;
+  const sorted = [];
+  for (let i = 0; i < n; i++) {
+    let swapped = false;
+    yield { line:'outer', vars:{i, n, swapped} };
+    yield { line:'init',  vars:{i, swapped} };
+    for (let j = 0; j < n - i - 1; j++) {
+      yield { line:'inner', vars:{i, j}, cmp:[j,j+1], a:[...a], sorted:[...sorted] };
+      yield { line:'cmp',   vars:{i, j, 'arr[j]':a[j], 'arr[j+1]':a[j+1]}, cmp:[j,j+1], a:[...a], sorted:[...sorted] };
+      if (a[j] > a[j+1]) {
+        [a[j], a[j+1]] = [a[j+1], a[j]];
+        yield { line:'swap',    vars:{i, j, 'arr[j]':a[j], 'arr[j+1]':a[j+1]}, swap:[j,j+1], a:[...a], sorted:[...sorted] };
+        yield { line:'setflag', vars:{i, j, swapped:true}, swap:[j,j+1], a:[...a], sorted:[...sorted] };
+        swapped = true;
+      }
+    }
+    sorted.unshift(n - 1 - i);
+    yield { line:'break', vars:{i, swapped}, a:[...a], sorted:[...sorted] };
+    if (!swapped) { for (let k=0;k<n-i-1;k++) sorted.push(k); break; }
+  }
+  yield { line:null, vars:{}, a:[...a], sorted:Array.from({length:n},(_,i)=>i) };
+}
+
+function* cocktailSteps(a) {
+  const n = a.length;
+  const sorted = new Set();
+  let lo = 0, hi = n - 1;
+  yield { line:'init', vars:{lo, hi} };
+  while (lo < hi) {
+    let swapped = false;
+    yield { line:'while', vars:{lo, hi} };
+    yield { line:'fwd',   vars:{lo, hi} };
+    for (let i = lo; i < hi; i++) {
+      yield { line:'cmp1', vars:{i, 'arr[i]':a[i], 'arr[i+1]':a[i+1]}, cmp:[i,i+1], a:[...a], sorted:[...sorted] };
+      if (a[i] > a[i+1]) { [a[i],a[i+1]]=[a[i+1],a[i]]; swapped=true;
+        yield { line:'cmp1', vars:{i, swapped:true}, swap:[i,i+1], a:[...a], sorted:[...sorted] }; }
+    }
+    sorted.add(hi); hi--;
+    yield { line:'dechi', vars:{hi, lo}, a:[...a], sorted:[...sorted] };
+    yield { line:'bwd', vars:{lo, hi} };
+    for (let i = hi; i > lo; i--) {
+      yield { line:'cmp2', vars:{i, 'arr[i]':a[i], 'arr[i-1]':a[i-1]}, cmp:[i,i-1], a:[...a], sorted:[...sorted] };
+      if (a[i] < a[i-1]) { [a[i],a[i-1]]=[a[i-1],a[i]]; swapped=true;
+        yield { line:'cmp2', vars:{i, swapped:true}, swap:[i,i-1], a:[...a], sorted:[...sorted] }; }
+    }
+    sorted.add(lo); lo++;
+    yield { line:'inclo', vars:{lo, hi}, a:[...a], sorted:[...sorted] };
+    yield { line:'break', vars:{swapped}, a:[...a], sorted:[...sorted] };
+    if (!swapped) break;
+  }
+  yield { line:null, vars:{}, a:[...a], sorted:Array.from({length:n},(_,i)=>i) };
+}
+
+function* quickSteps(a) {
+  const n = a.length;
+  const sorted = new Set();
+  function* qs(lo, hi) {
+    yield { line:'base', vars:{lo, hi}, a:[...a], sorted:[...sorted] };
+    if (lo >= hi) { if (lo===hi) sorted.add(lo); return; }
+    const pivotVal = a[hi];
+    yield { line:'pivot', vars:{lo, hi, pivot:pivotVal}, pivot:[hi], a:[...a], sorted:[...sorted] };
+    let i = lo - 1;
+    yield { line:'init', vars:{lo, hi, i, pivot:pivotVal}, pivot:[hi], a:[...a], sorted:[...sorted] };
+    for (let j = lo; j < hi; j++) {
+      yield { line:'inner', vars:{i, j, pivot:pivotVal, 'arr[j]':a[j]}, cmp:[j,hi], pivot:[hi], a:[...a], sorted:[...sorted] };
+      yield { line:'cmp',   vars:{i, j, 'arr[j]':a[j], pivot:pivotVal}, cmp:[j,hi], pivot:[hi], a:[...a], sorted:[...sorted] };
+      if (a[j] <= pivotVal) {
+        i++;
+        if (i !== j) { [a[i],a[j]]=[a[j],a[i]];
+          yield { line:'swap', vars:{i, j}, swap:[i,j], pivot:[hi], a:[...a], sorted:[...sorted] }; }
+      }
+    }
+    [a[i+1],a[hi]]=[a[hi],a[i+1]];
+    sorted.add(i+1);
+    yield { line:'place', vars:{pivotIdx:i+1, pivot:pivotVal}, swap:[i+1,hi], a:[...a], sorted:[...sorted] };
+    yield { line:'recur', vars:{left:`[${lo},${i}]`, right:`[${i+2},${hi}]`}, a:[...a], sorted:[...sorted] };
+    yield* qs(lo, i);
+    yield* qs(i+2, hi);
+  }
+  yield* qs(0, n-1);
+  yield { line:null, vars:{}, a:[...a], sorted:Array.from({length:n},(_,i)=>i) };
+}
+
+function* insertionSteps(a) {
+  const n = a.length;
+  const sorted = [0];
+  for (let i = 1; i < n; i++) {
+    const key = a[i];
+    yield { line:'outer', vars:{i}, a:[...a], sorted:[...sorted] };
+    yield { line:'key',   vars:{i, key}, a:[...a], sorted:[...sorted] };
+    let j = i - 1;
+    yield { line:'init',  vars:{i, j, key}, a:[...a], sorted:[...sorted] };
+    yield { line:'while', vars:{j, key, 'arr[j]':a[j]}, cmp:[j,i], a:[...a], sorted:[...sorted] };
+    while (j >= 0 && a[j] > key) {
+      a[j+1] = a[j];
+      yield { line:'move', vars:{j, key, 'arr[j]':a[j]}, swap:[j,j+1], a:[...a], sorted:[...sorted] };
+      j--;
+      yield { line:'while', vars:{j, key, 'arr[j]':j>=0?a[j]:'—'}, cmp:j>=0?[j,j+1]:[], a:[...a], sorted:[...sorted] };
+    }
+    a[j+1] = key;
+    sorted.push(i);
+    yield { line:'place', vars:{j, key, insertAt:j+1}, swap:[j+1,j+1], a:[...a], sorted:[...sorted] };
+  }
+  yield { line:null, vars:{}, a:[...a], sorted:Array.from({length:n},(_,i)=>i) };
+}
+
+function* binaryInsertionSteps(a) {
+  const n = a.length;
+  const sorted = [0];
+  for (let i = 1; i < n; i++) {
+    const key = a[i];
+    let lo = 0, hi = i;
+    yield { line:'outer', vars:{i}, a:[...a], sorted:[...sorted] };
+    yield { line:'key',   vars:{i, key, lo, hi}, a:[...a], sorted:[...sorted] };
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      yield { line:'while', vars:{lo, hi, mid}, a:[...a], sorted:[...sorted] };
+      yield { line:'mid',   vars:{mid, 'arr[mid]':a[mid], key}, cmp:[mid,i], a:[...a], sorted:[...sorted] };
+      if (a[mid] <= key) { yield { line:'cmp', vars:{lo:mid+1, hi}, a:[...a], sorted:[...sorted] }; lo = mid+1; }
+      else               { yield { line:'else', vars:{lo, hi:mid}, a:[...a], sorted:[...sorted] }; hi = mid; }
+    }
+    for (let j = i; j > lo; j--) {
+      a[j] = a[j-1];
+      yield { line:'move', vars:{j, lo, key}, swap:[j-1,j], a:[...a], sorted:[...sorted] };
+    }
+    a[lo] = key;
+    sorted.push(i);
+    yield { line:'place', vars:{lo, key}, swap:[lo,lo], a:[...a], sorted:[...sorted] };
+  }
+  yield { line:null, vars:{}, a:[...a], sorted:Array.from({length:n},(_,i)=>i) };
+}
+
+function* shellSteps(a) {
+  const n = a.length;
+  let gap = Math.floor(n / 2);
+  yield { line:'gap', vars:{gap, n}, a:[...a], sorted:[] };
+  while (gap > 0) {
+    yield { line:'while', vars:{gap}, a:[...a], sorted:[] };
+    for (let i = gap; i < n; i++) {
+      const key = a[i];
+      let j = i;
+      yield { line:'outer', vars:{i, gap}, a:[...a], sorted:[] };
+      yield { line:'key',   vars:{i, gap, key, j}, a:[...a], sorted:[] };
+      yield { line:'inner', vars:{j, gap, key, 'arr[j-gap]':a[j-gap]}, cmp:[j,j-gap], a:[...a], sorted:[] };
+      while (j >= gap && a[j-gap] > key) {
+        a[j] = a[j-gap];
+        yield { line:'move', vars:{j, gap, key}, swap:[j-gap,j], a:[...a], sorted:[] };
+        j -= gap;
+        if (j >= gap) yield { line:'inner', vars:{j, gap, key, 'arr[j-gap]':a[j-gap]}, cmp:[j,j-gap], a:[...a], sorted:[] };
+      }
+      a[j] = key;
+      yield { line:'place', vars:{j, key, gap}, a:[...a], sorted:[] };
+    }
+    gap = Math.floor(gap / 2);
+    yield { line:'decgap', vars:{gap}, a:[...a], sorted:[] };
+  }
+  yield { line:null, vars:{}, a:[...a], sorted:Array.from({length:n},(_,i)=>i) };
+}
+
+function* selectionSteps(a) {
+  const n = a.length;
+  const sorted = [];
+  for (let i = 0; i < n; i++) {
+    let minIdx = i;
+    yield { line:'outer',  vars:{i}, a:[...a], sorted:[...sorted] };
+    yield { line:'init',   vars:{i, minIdx}, cmp:[i], a:[...a], sorted:[...sorted] };
+    for (let j = i+1; j < n; j++) {
+      yield { line:'inner', vars:{i, j, minIdx, 'arr[j]':a[j], 'arr[minIdx]':a[minIdx]}, cmp:[j,minIdx], a:[...a], sorted:[...sorted] };
+      yield { line:'cmp',   vars:{j, minIdx, 'arr[j]':a[j], 'arr[minIdx]':a[minIdx]}, cmp:[j,minIdx], a:[...a], sorted:[...sorted] };
+      if (a[j] < a[minIdx]) { minIdx = j;
+        yield { line:'update', vars:{minIdx, 'arr[minIdx]':a[minIdx]}, cmp:[j,minIdx], a:[...a], sorted:[...sorted] }; }
+    }
+    if (minIdx !== i) { [a[i],a[minIdx]]=[a[minIdx],a[i]];
+      yield { line:'swap', vars:{i, minIdx}, swap:[i,minIdx], a:[...a], sorted:[...sorted] }; }
+    sorted.push(i);
+  }
+  yield { line:null, vars:{}, a:[...a], sorted:Array.from({length:n},(_,i)=>i) };
+}
+
+function* heapSteps(a) {
+  const n = a.length;
+  const sorted = new Set();
+  function* siftDown(arr, root, size) {
+    let i = root;
+    while (true) {
+      let largest = i, l = 2*i+1, r = 2*i+2;
+      if (l < size) {
+        yield { line:'cmp', vars:{i, l, r:'—', largest, 'arr[i]':arr[i], 'arr[l]':arr[l]}, cmp:[i,l], a:[...arr], sorted:[...sorted] };
+        if (arr[l] > arr[largest]) largest = l;
+      }
+      if (r < size) {
+        yield { line:'cmp', vars:{i, l, r, largest, 'arr[largest]':arr[largest], 'arr[r]':arr[r]}, cmp:[largest,r], a:[...arr], sorted:[...sorted] };
+        if (arr[r] > arr[largest]) largest = r;
+      }
+      if (largest === i) break;
+      [arr[i],arr[largest]]=[arr[largest],arr[i]];
+      yield { line:'swap', vars:{i, largest}, swap:[i,largest], a:[...arr], sorted:[...sorted] };
+      i = largest;
+    }
+  }
+  yield { line:'build', vars:{n}, a:[...a], sorted:[] };
+  for (let i = Math.floor(n/2)-1; i >= 0; i--) {
+    yield { line:'sift', vars:{i, n}, a:[...a], sorted:[] };
+    yield* siftDown(a, i, n);
+  }
+  yield { line:'extract', vars:{}, a:[...a], sorted:[] };
+  for (let i = n-1; i > 0; i--) {
+    [a[0],a[i]]=[a[i],a[0]]; sorted.add(i);
+    yield { line:'swap', vars:{i, 'arr[0]':a[i], 'arr[i]':a[0]}, swap:[0,i], a:[...a], sorted:[...sorted] };
+    yield { line:'down', vars:{size:i}, a:[...a], sorted:[...sorted] };
+    yield* siftDown(a, 0, i);
+  }
+  yield { line:null, vars:{}, a:[...a], sorted:Array.from({length:n},(_,i)=>i) };
+}
+
+function* mergeSteps(a) {
+  const n = a.length;
+  const sorted = new Set();
+  function* ms(lo, hi) {
+    yield { line:'base', vars:{lo, hi}, a:[...a], sorted:[...sorted] };
+    if (lo >= hi) return;
+    const mid = (lo + hi) >> 1;
+    yield { line:'mid',   vars:{lo, hi, mid}, a:[...a], sorted:[...sorted] };
+    yield { line:'recur', vars:{left:`[${lo},${mid}]`, right:`[${mid+1},${hi}]`}, a:[...a], sorted:[...sorted] };
+    yield* ms(lo, mid);
+    yield* ms(mid+1, hi);
+    yield { line:'merge', vars:{lo, hi, mid}, a:[...a], sorted:[...sorted] };
+    let i = lo, j = mid+1;
+    const tmp = [];
+    while (i <= mid && j <= hi) {
+      yield { line:'cmp',   vars:{i, j, 'arr[i]':a[i], 'arr[j]':a[j]}, cmp:[i,j], a:[...a], sorted:[...sorted] };
+      if (a[i] <= a[j]) { yield { line:'pick',  vars:{pick:a[i], i, j}, cmp:[i,j], a:[...a], sorted:[...sorted] }; tmp.push(a[i++]); }
+      else              { yield { line:'pickr', vars:{pick:a[j], i, j}, cmp:[i,j], a:[...a], sorted:[...sorted] }; tmp.push(a[j++]); }
+    }
+    while (i <= mid) tmp.push(a[i++]);
+    while (j <= hi)  tmp.push(a[j++]);
+    for (let x = 0; x < tmp.length; x++) {
+      a[lo+x] = tmp[x];
+      yield { line:'write', vars:{idx:lo+x, val:tmp[x]}, swap:[lo+x,lo+x], a:[...a], sorted:[...sorted] };
+    }
+  }
+  yield* ms(0, n-1);
+  yield { line:null, vars:{}, a:[...a], sorted:Array.from({length:n},(_,i)=>i) };
+}
+
+function* countingSteps(a) {
+  const n = a.length;
+  const offset = Math.min(...a);
+  const k = Math.max(...a) - offset + 1;
+  const count = new Array(k).fill(0);
+  const sorted = new Set();
+  yield { line:'range', vars:{offset, k}, a:[...a], sorted:[] };
+  yield { line:'count', vars:{k, count:[...count]}, a:[...a], sorted:[] };
+  for (let i = 0; i < n; i++) {
+    count[a[i]-offset]++;
+    yield { line:'scan', vars:{i, 'arr[i]':a[i], bucket:a[i]-offset, cnt:count[a[i]-offset]}, cmp:[i], a:[...a], sorted:[] };
+  }
+  yield { line:'rebuild', vars:{count:[...count]}, a:[...a], sorted:[] };
+  const result = [];
+  for (let i = 0; i < k; i++) for (let c = 0; c < count[i]; c++) result.push(i + offset);
+  for (let i = 0; i < n; i++) {
+    a[i] = result[i]; sorted.add(i);
+    yield { line:'write', vars:{i, val:result[i]}, swap:[i], a:[...a], sorted:[...sorted] };
+  }
+  yield { line:null, vars:{}, a:[...a], sorted:Array.from({length:n},(_,i)=>i) };
+}
+
+function* radixSteps(a) {
+  const n = a.length;
+  const sorted = new Set();
+  let maxVal = Math.max(...a);
+  let exp = 1, pass = 0;
+  yield { line:'exp', vars:{exp, maxVal}, a:[...a], sorted:[] };
+  while (Math.floor(maxVal / exp) > 0) {
+    pass++;
+    yield { line:'while', vars:{exp, pass}, a:[...a], sorted:[] };
+    const count = new Array(10).fill(0);
+    yield { line:'count', vars:{exp, pass}, a:[...a], sorted:[] };
+    for (let i = 0; i < n; i++) {
+      const d = Math.floor(a[i]/exp)%10;
+      count[d]++;
+      yield { line:'scan', vars:{i, 'arr[i]':a[i], digit:d, cnt:count[d]}, cmp:[i], a:[...a], sorted:[] };
+    }
+    yield { line:'prefix', vars:{count:[...count]}, a:[...a], sorted:[] };
+    for (let i = 1; i < 10; i++) count[i] += count[i-1];
+    const output = new Array(n);
+    yield { line:'build', vars:{exp, pass}, a:[...a], sorted:[] };
+    for (let i = n-1; i >= 0; i--) { const d = Math.floor(a[i]/exp)%10; output[--count[d]] = a[i]; }
+    for (let i = 0; i < n; i++) { a[i] = output[i]; sorted.add(i);
+      yield { line:'copy', vars:{i, val:output[i], exp, pass}, swap:[i], a:[...a], sorted:[...sorted] }; }
+    yield { line:'next', vars:{exp:exp*10, pass}, a:[...a], sorted:[] };
+    exp *= 10;
+  }
+  yield { line:null, vars:{}, a:[...a], sorted:Array.from({length:n},(_,i)=>i) };
+}
+
+const generatorMap = {
+  bubble:bubbleSteps, cocktail:cocktailSteps, quick:quickSteps,
+  insertion:insertionSteps, binary_insertion:binaryInsertionSteps, shell:shellSteps,
+  selection:selectionSteps, heap:heapSteps, merge:mergeSteps,
+  counting:countingSteps, radix:radixSteps,
+};
+
+// ========== Log ==========
+let logStepCount = 0;
+
+function toggleLog() {
+  const toggle = document.getElementById('logToggle');
+  const body   = document.getElementById('logBody');
+  toggle.classList.toggle('open');
+  body.classList.toggle('open');
+}
+
+function clearLog() {
+  document.getElementById('logBody').innerHTML = '<div style="color:#555;font-size:0.75rem;padding:4px 0">日志已清空</div>';
+  logStepCount = 0;
+  document.getElementById('logCount').textContent = '';
+}
+
+function appendLog(step, s) {
+  const body = document.getElementById('logBody');
+  // 首条日志时清空占位文字
+  if (logStepCount === 0) body.innerHTML = '';
+
+  logStepCount++;
+  document.getElementById('logCount').textContent = `(${logStepCount} 步)`;
+
+  let actionLabel = '';
+  let actionClass = '';
+  if (s.line === null) { actionLabel = '完成'; actionClass = 'done'; }
+  else if (s.swap && s.swap.length) { actionLabel = `swap[${s.swap.join(',')}]`; actionClass = 'swap'; }
+  else if (s.cmp  && s.cmp.length)  { actionLabel = `cmp[${s.cmp.join(',')}]`;  actionClass = 'cmp'; }
+
+  const varStr = s.vars && Object.keys(s.vars).length
+    ? Object.entries(s.vars).map(([k,v]) => `${k}=${formatVal(v)}`).join('  ')
+    : '—';
+
+  const entry = document.createElement('div');
+  entry.className = 'log-entry';
+  entry.innerHTML =
+    `<span class="log-step">#${logStepCount}</span>` +
+    `<span class="log-line">${s.line || '—'}</span>` +
+    `<span class="log-action ${actionClass}">${actionLabel}</span>` +
+    `<span class="log-vars">${escHtml(varStr)}</span>`;
+  body.appendChild(entry);
+  // 自动滚到底
+  body.scrollTop = body.scrollHeight;
+}
+
+// ========== Sort control ==========
+function startSort() {
+  stopSort();
+  clearLog();
+  const workArr = [...arr];
+  gen = generatorMap[currentAlgo](workArr);
+  cmp = 0; swp = 0;
+  prevVars = {};
+  document.getElementById('statusText').textContent = '排序中...';
+  tick();
+}
+
+function tick() {
+  const result = gen.next();
+  if (result.done) { document.getElementById('statusText').textContent = '完成 ✓'; return; }
+  const s = result.value;
+
+  const comparing = s.cmp || [];
+  const swapping  = s.swap || [];
+  const pivot     = s.pivot || [];
+  const sortedArr = s.sorted ? (s.sorted instanceof Set ? [...s.sorted] : s.sorted) : [];
+
+  if (comparing.length) cmp++;
+  if (swapping.length)  swp++;
+  document.getElementById('cmpCount').textContent = cmp;
+  document.getElementById('swapCount').textContent = swp;
+
+  if (s.a) renderBars(s.a, comparing, swapping, sortedArr, pivot);
+  renderCode(currentAlgo, s.line);
+  if (s.vars) renderVars(s.vars);
+  appendLog(logStepCount, s);
+
+  if (s.line === null) { document.getElementById('statusText').textContent = '完成 ✓'; return; }
+  timer = setTimeout(tick, baseDelay);
+}
+
+// init
+newArr();
+</script>
+</body>
+</html>
