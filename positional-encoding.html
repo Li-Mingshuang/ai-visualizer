@@ -83,7 +83,7 @@
   </div>
 
   <div class="ctrl">
-    <label>高亮位置（图③）</label>
+    <label>高亮位置（图③⑤⑥⑦）</label>
     <input type="range" id="posHighlight" min="0" max="49" value="10">
     <span id="posHighlightVal">10</span>
   </div>
@@ -119,6 +119,28 @@
     <div class="card-title">④ 相对位置线性性</div>
     <div class="card-desc">固定偏移 k，PE(pos+k) 和 PE(pos) 的点积只取决于 k，不依赖绝对位置 pos。横轴=偏移k，纵轴=点积均值（跨所有pos平均）。</div>
     <canvas id="relative"></canvas>
+  </div>
+
+  <!-- 编码向量 -->
+  <div class="card full">
+    <div class="card-title">⑤ 高亮位置的编码向量</div>
+    <div class="card-desc">高亮位置 pos 的完整 d_model 维编码向量。橙色=cos维，蓝色=sin维。低维度（左侧）sin/cos值接近0/1（角度小），高维度（右侧）sin/cos值振荡更快。每对 (sin,cos) 构成单位圆上的一个点，角度 = pos / 10000^(2i/d)。</div>
+    <canvas id="pevector"></canvas>
+  </div>
+
+  <!-- 维度频率 -->
+  <div class="card">
+    <div class="card-title">⑥ 各维度的旋转角度</div>
+    <div class="card-desc">每个维度对 i 的角度 θ = pos / 10000^(2i/d)。角度决定了 sin(θ)/cos(θ) 的值。i 越大，分母越大，角度越小，变化越慢——这是不同维度频率不同的根本原因。</div>
+    <canvas id="angles"></canvas>
+  </div>
+
+  <!-- 2D旋转 -->
+  <div class="card">
+    <div class="card-title">⑦ 2D 子空间旋转</div>
+    <div class="card-desc">每对维度 (2i, 2i+1) 构成一个 2D 子空间，pos 对应单位圆上的一个点（角度 = θ_i）。随 pos 增大，点在圆上旋转。不同维度对转速不同，这正是 RoPE 旋转位置编码的几何直觉。</div>
+    <canvas id="rotation"></canvas>
+    <div class="legend" id="rotLegend"></div>
   </div>
 </div>
 
@@ -457,6 +479,223 @@ function drawRelative(pe) {
   ctx.textAlign = 'center'; ctx.fillText('偏移 k', W / 2, H);
 }
 
+// ── ⑤ 编码向量柱状图 ─────────────────────────────────────────
+function drawPEVector(pe, posHL, dModel) {
+  const canvas = document.getElementById('pevector');
+  const W = canvas.parentElement.clientWidth - 40;
+  const H = 180;
+  canvas.width = W; canvas.height = H;
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, W, H);
+
+  const padL = 50, padR = 20, padT = 20, padB = 40;
+  const plotW = W - padL - padR, plotH = H - padT - padB;
+  const vec = pe[posHL];
+
+  // 网格线
+  ctx.strokeStyle = C.border; ctx.lineWidth = 0.5;
+  [-1, 0, 1].forEach(v => {
+    const y = padT + plotH * (1 - (v + 1) / 2);
+    ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(padL + plotW, y); ctx.stroke();
+  });
+
+  const barW = plotW / dModel;
+  for (let d = 0; d < dModel; d++) {
+    const v = vec[d];
+    const isSin = d % 2 === 0;
+    const x = padL + d * barW;
+    const zeroY = padT + plotH / 2;
+    const barH = Math.abs(v) * plotH / 2;
+    const barY = v >= 0 ? zeroY - barH : zeroY;
+    ctx.fillStyle = isSin ? 'rgba(126,184,247,0.8)' : 'rgba(240,180,41,0.8)';
+    ctx.fillRect(x + 1, barY, barW - 2, barH);
+  }
+
+  // 零线
+  ctx.strokeStyle = C.muted; ctx.lineWidth = 1;
+  const zeroY = padT + plotH / 2;
+  ctx.beginPath(); ctx.moveTo(padL, zeroY); ctx.lineTo(padL + plotW, zeroY); ctx.stroke();
+
+  // 轴标签
+  ctx.fillStyle = C.muted; ctx.font = '10px monospace'; ctx.textAlign = 'right';
+  [-1, 0, 1].forEach(v => {
+    const y = padT + plotH * (1 - (v + 1) / 2);
+    ctx.fillText(v.toFixed(0), padL - 4, y + 3);
+  });
+
+  // x轴维度标签
+  ctx.textAlign = 'center';
+  const step = Math.max(1, Math.floor(dModel / 8));
+  for (let d = 0; d < dModel; d += step) {
+    ctx.fillText(d, padL + d * barW + barW / 2, H - padB + 14);
+  }
+
+  // 公式注释：取两个维度示例
+  const i0 = 0, i4 = Math.min(4, dModel / 2 - 1);
+  const angle0 = posHL / Math.pow(10000, 0);
+  const angle4 = posHL / Math.pow(10000, 2 * i4 / dModel);
+  ctx.font = '10px monospace'; ctx.textAlign = 'left'; ctx.fillStyle = C.accent;
+  ctx.fillText(`i=0: θ=${angle0.toFixed(3)}  sin=${Math.sin(angle0).toFixed(3)}`, padL, H - padB + 30);
+  ctx.fillStyle = C.accent2;
+  ctx.fillText(`i=${i4}: θ=${angle4.toFixed(3)}  cos=${Math.cos(angle4).toFixed(3)}`, padL + plotW * 0.45, H - padB + 30);
+
+  // 图例
+  ctx.fillStyle = 'rgba(126,184,247,0.8)'; ctx.fillRect(padL, H - 8, 14, 6);
+  ctx.fillStyle = C.muted; ctx.font = '10px sans-serif'; ctx.textAlign = 'left';
+  ctx.fillText('sin维（偶数）', padL + 18, H - 2);
+  ctx.fillStyle = 'rgba(240,180,41,0.8)'; ctx.fillRect(padL + 120, H - 8, 14, 6);
+  ctx.fillStyle = C.muted;
+  ctx.fillText('cos维（奇数）', padL + 138, H - 2);
+}
+
+// ── ⑥ 维度角度图 ──────────────────────────────────────────────
+function drawAngles(posHL, dModel) {
+  const canvas = document.getElementById('angles');
+  const W = canvas.parentElement.clientWidth - 40;
+  const H = 180;
+  canvas.width = W; canvas.height = H;
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, W, H);
+
+  const padL = 55, padR = 20, padT = 20, padB = 30;
+  const plotW = W - padL - padR, plotH = H - padT - padB;
+  const numPairs = dModel / 2;
+
+  // 计算每个维度对的角度
+  const angles = [];
+  for (let i = 0; i < numPairs; i++) {
+    angles.push(posHL / Math.pow(10000, 2 * i / dModel));
+  }
+  const maxAngle = Math.max(...angles, 0.01);
+
+  // 网格
+  ctx.strokeStyle = C.border; ctx.lineWidth = 0.5;
+  [0, 0.25, 0.5, 0.75, 1].forEach(v => {
+    const y = padT + plotH * (1 - v);
+    ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(padL + plotW, y); ctx.stroke();
+  });
+
+  // 角度柱
+  const barW = plotW / numPairs;
+  for (let i = 0; i < numPairs; i++) {
+    const norm = angles[i] / maxAngle;
+    const x = padL + i * barW;
+    const barH = norm * plotH;
+    const hue = 200 + i / numPairs * 60;
+    ctx.fillStyle = `hsla(${hue},70%,65%,0.85)`;
+    ctx.fillRect(x + 1, padT + plotH - barH, barW - 2, barH);
+  }
+
+  // y轴：实际角度值
+  ctx.fillStyle = C.muted; ctx.font = '10px monospace'; ctx.textAlign = 'right';
+  [0, 0.25, 0.5, 0.75, 1].forEach(v => {
+    const y = padT + plotH * (1 - v);
+    ctx.fillText((v * maxAngle).toFixed(1), padL - 4, y + 3);
+  });
+
+  // x轴
+  ctx.textAlign = 'center';
+  for (let i = 0; i < numPairs; i += Math.max(1, Math.floor(numPairs / 6))) {
+    ctx.fillText(i, padL + i * barW + barW / 2, H - 6);
+  }
+
+  // 轴名
+  ctx.fillStyle = C.muted; ctx.font = '11px sans-serif';
+  ctx.save(); ctx.translate(12, H / 2); ctx.rotate(-Math.PI / 2);
+  ctx.textAlign = 'center'; ctx.fillText('角度 θ', 0, 0); ctx.restore();
+  ctx.textAlign = 'center'; ctx.fillText('维度对 i', W / 2, H);
+
+  // 公式注释
+  ctx.fillStyle = C.accent2; ctx.font = '10px monospace'; ctx.textAlign = 'left';
+  ctx.fillText(`θ_i = ${posHL} / 10000^(2i/${dModel})`, padL, padT - 4);
+}
+
+// ── ⑦ 2D子空间旋转 ────────────────────────────────────────────
+const ROT_DIMS = [0, 2, 6, 12];
+function drawRotation(pe, posHL, dModel) {
+  const canvas = document.getElementById('rotation');
+  const W = canvas.parentElement.clientWidth - 40;
+  const H = 220;
+  canvas.width = W; canvas.height = H;
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, W, H);
+
+  const validDims = ROT_DIMS.filter(i => i < dModel / 2);
+  const n = validDims.length;
+  const cellW = (W - 20) / n;
+  const r = Math.min(cellW / 2 - 20, 70);
+
+  validDims.forEach((i, ci) => {
+    const cx = 10 + ci * cellW + cellW / 2;
+    const cy = H / 2 + 10;
+
+    // 单位圆
+    ctx.strokeStyle = C.border; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.stroke();
+
+    // 坐标轴
+    ctx.strokeStyle = C.bg3; ctx.lineWidth = 0.5;
+    ctx.beginPath(); ctx.moveTo(cx - r - 5, cy); ctx.lineTo(cx + r + 5, cy); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(cx, cy - r - 5); ctx.lineTo(cx, cy + r + 5); ctx.stroke();
+
+    // 轨迹：前 posHL+1 个位置的轨迹（渐变）
+    const seqLen = pe.length;
+    for (let pos = 0; pos <= Math.min(posHL, seqLen - 1); pos++) {
+      const sinVal = pe[pos][2 * i];
+      const cosVal = pe[pos][2 * i + 1];
+      const px = cx + sinVal * r;
+      const py = cy - cosVal * r;
+      const alpha = 0.15 + 0.85 * (pos / Math.max(posHL, 1));
+      ctx.fillStyle = `rgba(126,184,247,${alpha})`;
+      ctx.beginPath(); ctx.arc(px, py, 2, 0, Math.PI * 2); ctx.fill();
+    }
+
+    // 当前位置点（高亮）
+    const sv = pe[posHL][2 * i];
+    const cv = pe[posHL][2 * i + 1];
+    const px = cx + sv * r;
+    const py = cy - cv * r;
+
+    // 半径线
+    ctx.strokeStyle = WAVE_COLORS[ci]; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(px, py); ctx.stroke();
+
+    // 当前点
+    ctx.fillStyle = WAVE_COLORS[ci];
+    ctx.beginPath(); ctx.arc(px, py, 5, 0, Math.PI * 2); ctx.fill();
+
+    // 角度弧
+    const angle = posHL / Math.pow(10000, 2 * i / dModel);
+    const arcAngle = -(angle % (Math.PI * 2));
+    ctx.strokeStyle = `rgba(240,180,41,0.5)`; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.arc(cx, cy, r * 0.3, -Math.PI / 2, -Math.PI / 2 + arcAngle % (Math.PI * 2), arcAngle < 0); ctx.stroke();
+
+    // 维度标签
+    ctx.fillStyle = WAVE_COLORS[ci]; ctx.font = 'bold 11px monospace'; ctx.textAlign = 'center';
+    ctx.fillText(`i=${i}`, cx, cy - r - 8);
+
+    // 角度值
+    ctx.fillStyle = C.muted; ctx.font = '10px monospace';
+    ctx.fillText(`θ=${angle.toFixed(2)}`, cx, cy + r + 16);
+
+    // sin/cos 值
+    ctx.fillStyle = C.accent; ctx.font = '9px monospace';
+    ctx.fillText(`sin=${sv.toFixed(2)}`, cx, cy + r + 28);
+    ctx.fillStyle = C.accent2;
+    ctx.fillText(`cos=${cv.toFixed(2)}`, cx, cy + r + 40);
+  });
+
+  // 图例
+  const legend = document.getElementById('rotLegend');
+  legend.innerHTML = '';
+  validDims.forEach((i, ci) => {
+    const item = document.createElement('div');
+    item.className = 'leg';
+    item.innerHTML = `<div class="leg-dot" style="background:${WAVE_COLORS[ci]}"></div>维度对 i=${i}（频率 1/10000^${(2*i/dModel).toFixed(2)}）`;
+    legend.appendChild(item);
+  });
+}
+
 // ── 主渲染 ────────────────────────────────────────────────────
 function render() {
   const { seqLen, dModel, posHL } = getParams();
@@ -465,6 +704,9 @@ function render() {
   drawWaves(pe);
   drawSimilarity(pe, posHL);
   drawRelative(pe);
+  drawPEVector(pe, posHL, dModel);
+  drawAngles(posHL, dModel);
+  drawRotation(pe, posHL, dModel);
 }
 
 // ── 控件 ──────────────────────────────────────────────────────
