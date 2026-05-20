@@ -1,0 +1,494 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>正弦位置编码可视化</title>
+<style>
+  :root {
+    --bg: #0f1117;
+    --bg2: #161923;
+    --bg3: #1e2130;
+    --accent: #7eb8f7;
+    --accent2: #f0b429;
+    --text: #e0e0e0;
+    --muted: #7a7a8a;
+    --border: #2a2f45;
+    --radius: 10px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', sans-serif; font-size: 14px; line-height: 1.6; }
+  .layout { display: flex; min-height: 100vh; }
+
+  /* 侧边栏 */
+  .sidebar {
+    width: 200px; flex-shrink: 0;
+    position: sticky; top: 0; height: 100vh;
+    background: var(--bg2); border-right: 1px solid var(--border);
+    padding: 24px 16px; display: flex; flex-direction: column; gap: 20px;
+    overflow-y: auto;
+  }
+  .sidebar h1 { font-size: 1.1rem; color: var(--accent); line-height: 1.3; }
+  .sidebar .subtitle { color: var(--muted); font-size: 11px; }
+  .sidebar .formula { background: var(--bg3); border-radius: 6px; padding: 8px 10px; font-family: monospace; font-size: 10px; color: var(--accent2); line-height: 1.8; }
+  .ctrl { display: flex; flex-direction: column; gap: 4px; }
+  .ctrl label { color: var(--muted); font-size: 11px; }
+  .ctrl input[type=range] { width: 100%; accent-color: var(--accent); }
+  .ctrl span { color: var(--accent); font-weight: 700; font-family: monospace; font-size: 13px; }
+  .ctrl-sep { border: none; border-top: 1px solid var(--border); }
+
+  /* 主内容 */
+  .main { flex: 1; padding: 24px; overflow-x: hidden; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  .card { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; }
+  .card-title { font-size: 13px; font-weight: 700; color: var(--accent); letter-spacing: 0.06em; text-transform: uppercase; margin-bottom: 4px; }
+  .card-desc { font-size: 12px; color: var(--muted); margin-bottom: 14px; }
+  canvas { display: block; width: 100%; }
+  .legend { display: flex; gap: 16px; flex-wrap: wrap; margin-top: 10px; }
+  .leg { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--muted); }
+  .leg-dot { width: 20px; height: 3px; border-radius: 2px; }
+  .full { grid-column: 1 / -1; }
+  .tooltip { position: fixed; background: #1e2130; border: 1px solid var(--border); border-radius: 6px; padding: 8px 12px; font-size: 12px; pointer-events: none; opacity: 0; transition: opacity 0.15s; z-index: 100; }
+</style>
+</head>
+<body>
+<div class="layout">
+
+<!-- 侧边栏 -->
+<aside class="sidebar">
+  <div>
+    <h1>正弦位置编码</h1>
+    <p class="subtitle" style="margin-top:4px">Transformer 位置编码可视化</p>
+  </div>
+
+  <div class="formula">
+    PE(pos,2i) =<br>
+    &nbsp;sin(pos/10000^(2i/d))<br><br>
+    PE(pos,2i+1) =<br>
+    &nbsp;cos(pos/10000^(2i/d))
+  </div>
+
+  <hr class="ctrl-sep">
+
+  <div class="ctrl">
+    <label>序列长度</label>
+    <input type="range" id="seqLen" min="10" max="100" value="50">
+    <span id="seqLenVal">50</span>
+  </div>
+
+  <div class="ctrl">
+    <label>d_model</label>
+    <input type="range" id="dModel" min="8" max="64" step="8" value="32">
+    <span id="dModelVal">32</span>
+  </div>
+
+  <div class="ctrl">
+    <label>高亮位置（图③）</label>
+    <input type="range" id="posHighlight" min="0" max="49" value="10">
+    <span id="posHighlightVal">10</span>
+  </div>
+</aside>
+
+<!-- 主内容 -->
+<main class="main">
+<div class="grid">
+  <!-- 热力图 -->
+  <div class="card full">
+    <div class="card-title">① 编码矩阵热力图</div>
+    <div class="card-desc">每行 = 一个位置的编码向量；每列 = 一个维度；颜色 = 编码值（蓝→负，白→零，橙→正）。注意不同列（维度）的变化频率明显不同。</div>
+    <canvas id="heatmap"></canvas>
+  </div>
+
+  <!-- 波形图 -->
+  <div class="card full">
+    <div class="card-title">② 不同维度的波形</div>
+    <div class="card-desc">同一序列位置轴上，不同维度（i）的正弦值变化。低维度（i小）变化慢，高维度（i大）变化快，类比二进制各位的翻转频率。</div>
+    <canvas id="waves"></canvas>
+    <div class="legend" id="waveLegend"></div>
+  </div>
+
+  <!-- 相似度图 -->
+  <div class="card">
+    <div class="card-title">③ 位置相似度</div>
+    <div class="card-desc">高亮位置与所有其他位置编码的点积（归一化）。越靠近高亮位置，相似度越高，说明位置编码保留了距离信息。</div>
+    <canvas id="similarity"></canvas>
+  </div>
+
+  <!-- 相对位置 -->
+  <div class="card">
+    <div class="card-title">④ 相对位置线性性</div>
+    <div class="card-desc">固定偏移 k，PE(pos+k) 和 PE(pos) 的点积只取决于 k，不依赖绝对位置 pos。横轴=偏移k，纵轴=点积均值（跨所有pos平均）。</div>
+    <canvas id="relative"></canvas>
+  </div>
+</div>
+
+</div><!-- end grid -->
+</main>
+</div><!-- end layout -->
+
+<div class="tooltip" id="tooltip"></div>
+
+<script>
+const C = {
+  bg:     '#0f1117',
+  bg2:    '#161923',
+  bg3:    '#1e2130',
+  accent: '#7eb8f7',
+  accent2:'#f0b429',
+  muted:  '#7a7a8a',
+  text:   '#e0e0e0',
+  border: '#2a2f45',
+};
+
+// ── 参数 ──────────────────────────────────────────────────────
+let SEQ_LEN = 50, D_MODEL = 32, POS_HIGHLIGHT = 10;
+
+function getParams() {
+  return { seqLen: SEQ_LEN, dModel: D_MODEL, posHL: POS_HIGHLIGHT };
+}
+
+// ── 计算 PE ───────────────────────────────────────────────────
+function computePE(seqLen, dModel) {
+  const pe = [];
+  for (let pos = 0; pos < seqLen; pos++) {
+    const row = new Float32Array(dModel);
+    for (let i = 0; i < dModel / 2; i++) {
+      const angle = pos / Math.pow(10000, 2 * i / dModel);
+      row[2 * i]     = Math.sin(angle);
+      row[2 * i + 1] = Math.cos(angle);
+    }
+    pe.push(row);
+  }
+  return pe;
+}
+
+// ── 颜色映射（-1→蓝, 0→暗, 1→橙）──────────────────────────────
+function valToColor(v) {
+  const t = (v + 1) / 2; // 0~1
+  if (t < 0.5) {
+    const s = t * 2;
+    const r = Math.round(30 + s * (200 - 30));
+    const g = Math.round(80 + s * (180 - 80));
+    const b = Math.round(180 + s * (160 - 180));
+    return `rgb(${r},${g},${b})`;
+  } else {
+    const s = (t - 0.5) * 2;
+    const r = Math.round(200 + s * (240 - 200));
+    const g = Math.round(180 + s * (130 - 180));
+    const b = Math.round(160 + s * (30 - 160));
+    return `rgb(${r},${g},${b})`;
+  }
+}
+
+function valToColorHex(v) {
+  const t = (v + 1) / 2;
+  let r, g, b;
+  if (t < 0.5) {
+    const s = t * 2;
+    r = Math.round(30 + s * 170); g = Math.round(80 + s * 100); b = Math.round(180 - s * 20);
+  } else {
+    const s = (t - 0.5) * 2;
+    r = Math.round(200 + s * 40); g = Math.round(180 - s * 50); b = Math.round(160 - s * 130);
+  }
+  return `rgb(${r},${g},${b})`;
+}
+
+// ── 热力图 ────────────────────────────────────────────────────
+function drawHeatmap(pe, posHL) {
+  const canvas = document.getElementById('heatmap');
+  const seqLen = pe.length, dModel = pe[0].length;
+  const W = canvas.parentElement.clientWidth - 40;
+  const cellH = Math.max(4, Math.min(16, Math.floor(300 / seqLen)));
+  const H = seqLen * cellH + 30;
+  canvas.width = W; canvas.height = H;
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, W, H);
+
+  const cellW = (W - 60) / dModel;
+  const offsetX = 50;
+
+  for (let pos = 0; pos < seqLen; pos++) {
+    for (let d = 0; d < dModel; d++) {
+      ctx.fillStyle = valToColorHex(pe[pos][d]);
+      ctx.fillRect(offsetX + d * cellW, pos * cellH, Math.ceil(cellW), cellH);
+    }
+    // 高亮行
+    if (pos === posHL) {
+      ctx.strokeStyle = '#fff';
+      ctx.lineWidth = 1.5;
+      ctx.strokeRect(offsetX, pos * cellH, (W - 60), cellH);
+    }
+  }
+
+  // y 轴标签
+  ctx.fillStyle = C.muted; ctx.font = '10px monospace'; ctx.textAlign = 'right';
+  for (let pos = 0; pos <= seqLen; pos += Math.max(1, Math.floor(seqLen / 10))) {
+    ctx.fillText(pos, offsetX - 4, pos * cellH + cellH / 2 + 3);
+  }
+
+  // x 轴标签
+  ctx.textAlign = 'center';
+  for (let d = 0; d < dModel; d += Math.max(1, Math.floor(dModel / 8))) {
+    ctx.fillText(d, offsetX + d * cellW + cellW / 2, seqLen * cellH + 16);
+  }
+
+  // 轴名
+  ctx.fillStyle = C.muted; ctx.font = '11px sans-serif';
+  ctx.save(); ctx.translate(12, H / 2); ctx.rotate(-Math.PI / 2);
+  ctx.textAlign = 'center'; ctx.fillText('位置 pos', 0, 0); ctx.restore();
+  ctx.textAlign = 'center'; ctx.fillText('维度 d', W / 2, H - 2);
+}
+
+// ── 波形图 ────────────────────────────────────────────────────
+const WAVE_COLORS = ['#7eb8f7','#f0b429','#4caf7d','#e05c5c','#c97ee0','#50bfe6'];
+const WAVE_DIMS = [0, 2, 6, 14, 20, 28];
+
+function drawWaves(pe) {
+  const canvas = document.getElementById('waves');
+  const seqLen = pe.length;
+  const W = canvas.parentElement.clientWidth - 40;
+  const H = 200;
+  canvas.width = W; canvas.height = H;
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, W, H);
+
+  const padL = 50, padR = 20, padT = 20, padB = 30;
+  const plotW = W - padL - padR, plotH = H - padT - padB;
+
+  // 网格
+  ctx.strokeStyle = C.border; ctx.lineWidth = 0.5;
+  for (let v = -1; v <= 1; v += 0.5) {
+    const y = padT + plotH * (1 - (v + 1) / 2);
+    ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(padL + plotW, y); ctx.stroke();
+  }
+
+  // 零线
+  ctx.strokeStyle = C.muted; ctx.lineWidth = 1;
+  const y0 = padT + plotH / 2;
+  ctx.beginPath(); ctx.moveTo(padL, y0); ctx.lineTo(padL + plotW, y0); ctx.stroke();
+
+  // 波形
+  WAVE_DIMS.forEach((dim, ci) => {
+    if (dim >= pe[0].length) return;
+    ctx.strokeStyle = WAVE_COLORS[ci]; ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    for (let pos = 0; pos < seqLen; pos++) {
+      const x = padL + pos / (seqLen - 1) * plotW;
+      const y = padT + plotH * (1 - (pe[pos][dim] + 1) / 2);
+      pos === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+  });
+
+  // 轴标签
+  ctx.fillStyle = C.muted; ctx.font = '10px monospace'; ctx.textAlign = 'right';
+  [-1, -0.5, 0, 0.5, 1].forEach(v => {
+    const y = padT + plotH * (1 - (v + 1) / 2);
+    ctx.fillText(v.toFixed(1), padL - 4, y + 3);
+  });
+  ctx.textAlign = 'center';
+  for (let pos = 0; pos <= seqLen; pos += Math.floor(seqLen / 5)) {
+    ctx.fillText(pos, padL + pos / (seqLen - 1) * plotW, H - 6);
+  }
+  ctx.fillStyle = C.muted; ctx.font = '11px sans-serif';
+  ctx.save(); ctx.translate(12, H / 2); ctx.rotate(-Math.PI / 2);
+  ctx.textAlign = 'center'; ctx.fillText('sin 值', 0, 0); ctx.restore();
+  ctx.textAlign = 'center'; ctx.fillText('位置 pos', W / 2, H - 0);
+
+  // 图例
+  const legend = document.getElementById('waveLegend');
+  legend.innerHTML = '';
+  WAVE_DIMS.forEach((dim, ci) => {
+    if (dim >= pe[0].length) return;
+    const item = document.createElement('div');
+    item.className = 'leg';
+    item.innerHTML = `<div class="leg-dot" style="background:${WAVE_COLORS[ci]}"></div>维度 ${dim}`;
+    legend.appendChild(item);
+  });
+}
+
+// ── 相似度图 ──────────────────────────────────────────────────
+function drawSimilarity(pe, posHL) {
+  const canvas = document.getElementById('similarity');
+  const seqLen = pe.length, dModel = pe[0].length;
+  const W = canvas.parentElement.clientWidth - 40;
+  const H = 180;
+  canvas.width = W; canvas.height = H;
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, W, H);
+
+  const padL = 50, padR = 20, padT = 20, padB = 30;
+  const plotW = W - padL - padR, plotH = H - padT - padB;
+
+  // 计算点积
+  const refVec = pe[posHL];
+  const refNorm = Math.sqrt(refVec.reduce((s, v) => s + v * v, 0));
+  const sims = pe.map(row => {
+    const dot = row.reduce((s, v, i) => s + v * refVec[i], 0);
+    const norm = Math.sqrt(row.reduce((s, v) => s + v * v, 0));
+    return dot / (norm * refNorm + 1e-8);
+  });
+
+  // 网格
+  ctx.strokeStyle = C.border; ctx.lineWidth = 0.5;
+  [0, 0.5, 1].forEach(v => {
+    const y = padT + plotH * (1 - v);
+    ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(padL + plotW, y); ctx.stroke();
+  });
+
+  // 面积图
+  const gradient = ctx.createLinearGradient(0, padT, 0, padT + plotH);
+  gradient.addColorStop(0, 'rgba(126,184,247,0.4)');
+  gradient.addColorStop(1, 'rgba(126,184,247,0.02)');
+  ctx.beginPath();
+  ctx.moveTo(padL, padT + plotH);
+  for (let pos = 0; pos < seqLen; pos++) {
+    const x = padL + pos / (seqLen - 1) * plotW;
+    const y = padT + plotH * (1 - (sims[pos] + 1) / 2);
+    ctx.lineTo(x, y);
+  }
+  ctx.lineTo(padL + plotW, padT + plotH);
+  ctx.closePath();
+  ctx.fillStyle = gradient; ctx.fill();
+
+  // 折线
+  ctx.strokeStyle = C.accent; ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  for (let pos = 0; pos < seqLen; pos++) {
+    const x = padL + pos / (seqLen - 1) * plotW;
+    const y = padT + plotH * (1 - (sims[pos] + 1) / 2);
+    pos === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+
+  // 高亮位置竖线
+  const hx = padL + posHL / (seqLen - 1) * plotW;
+  ctx.strokeStyle = '#fff'; ctx.lineWidth = 1; ctx.setLineDash([4, 3]);
+  ctx.beginPath(); ctx.moveTo(hx, padT); ctx.lineTo(hx, padT + plotH); ctx.stroke();
+  ctx.setLineDash([]);
+
+  // 标签
+  ctx.fillStyle = C.muted; ctx.font = '10px monospace'; ctx.textAlign = 'right';
+  [-1, 0, 1].forEach(v => {
+    const y = padT + plotH * (1 - (v + 1) / 2);
+    ctx.fillText(v.toFixed(0), padL - 4, y + 3);
+  });
+  ctx.textAlign = 'center';
+  for (let pos = 0; pos <= seqLen; pos += Math.floor(seqLen / 5)) {
+    ctx.fillText(pos, padL + pos / (seqLen - 1) * plotW, H - 6);
+  }
+  ctx.fillStyle = C.muted; ctx.font = '11px sans-serif';
+  ctx.save(); ctx.translate(12, H / 2); ctx.rotate(-Math.PI / 2);
+  ctx.textAlign = 'center'; ctx.fillText('余弦相似度', 0, 0); ctx.restore();
+  ctx.textAlign = 'center'; ctx.fillText('位置 pos', W / 2, H);
+}
+
+// ── 相对位置图 ─────────────────────────────────────────────────
+function drawRelative(pe) {
+  const canvas = document.getElementById('relative');
+  const seqLen = pe.length, dModel = pe[0].length;
+  const W = canvas.parentElement.clientWidth - 40;
+  const H = 180;
+  canvas.width = W; canvas.height = H;
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, W, H);
+
+  const padL = 50, padR = 20, padT = 20, padB = 30;
+  const plotW = W - padL - padR, plotH = H - padT - padB;
+
+  const maxK = Math.floor(seqLen * 0.8);
+  const dotByK = [];
+  for (let k = 0; k <= maxK; k++) {
+    let sum = 0, cnt = 0;
+    for (let pos = 0; pos + k < seqLen; pos++) {
+      const a = pe[pos], b = pe[pos + k];
+      const dot = a.reduce((s, v, i) => s + v * b[i], 0);
+      const na = Math.sqrt(a.reduce((s, v) => s + v * v, 0));
+      const nb = Math.sqrt(b.reduce((s, v) => s + v * v, 0));
+      sum += dot / (na * nb + 1e-8);
+      cnt++;
+    }
+    dotByK.push(cnt > 0 ? sum / cnt : 0);
+  }
+
+  // 网格
+  ctx.strokeStyle = C.border; ctx.lineWidth = 0.5;
+  [0, 0.5, 1].forEach(v => {
+    const y = padT + plotH * (1 - v);
+    ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(padL + plotW, y); ctx.stroke();
+  });
+
+  // 面积
+  const gradient = ctx.createLinearGradient(0, padT, 0, padT + plotH);
+  gradient.addColorStop(0, 'rgba(240,180,41,0.4)');
+  gradient.addColorStop(1, 'rgba(240,180,41,0.02)');
+  ctx.beginPath();
+  ctx.moveTo(padL, padT + plotH);
+  for (let k = 0; k <= maxK; k++) {
+    const x = padL + k / maxK * plotW;
+    const y = padT + plotH * (1 - (dotByK[k] + 1) / 2);
+    ctx.lineTo(x, y);
+  }
+  ctx.lineTo(padL + plotW, padT + plotH);
+  ctx.closePath();
+  ctx.fillStyle = gradient; ctx.fill();
+
+  ctx.strokeStyle = C.accent2; ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  for (let k = 0; k <= maxK; k++) {
+    const x = padL + k / maxK * plotW;
+    const y = padT + plotH * (1 - (dotByK[k] + 1) / 2);
+    k === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+
+  ctx.fillStyle = C.muted; ctx.font = '10px monospace'; ctx.textAlign = 'right';
+  [-1, 0, 1].forEach(v => {
+    const y = padT + plotH * (1 - (v + 1) / 2);
+    ctx.fillText(v.toFixed(0), padL - 4, y + 3);
+  });
+  ctx.textAlign = 'center';
+  [0, Math.floor(maxK / 4), Math.floor(maxK / 2), Math.floor(maxK * 3 / 4), maxK].forEach(k => {
+    ctx.fillText(k, padL + k / maxK * plotW, H - 6);
+  });
+  ctx.fillStyle = C.muted; ctx.font = '11px sans-serif';
+  ctx.save(); ctx.translate(12, H / 2); ctx.rotate(-Math.PI / 2);
+  ctx.textAlign = 'center'; ctx.fillText('平均点积', 0, 0); ctx.restore();
+  ctx.textAlign = 'center'; ctx.fillText('偏移 k', W / 2, H);
+}
+
+// ── 主渲染 ────────────────────────────────────────────────────
+function render() {
+  const { seqLen, dModel, posHL } = getParams();
+  const pe = computePE(seqLen, dModel);
+  drawHeatmap(pe, posHL);
+  drawWaves(pe);
+  drawSimilarity(pe, posHL);
+  drawRelative(pe);
+}
+
+// ── 控件 ──────────────────────────────────────────────────────
+document.getElementById('seqLen').addEventListener('input', e => {
+  SEQ_LEN = +e.target.value;
+  document.getElementById('seqLenVal').textContent = SEQ_LEN;
+  const hl = document.getElementById('posHighlight');
+  hl.max = SEQ_LEN - 1;
+  if (POS_HIGHLIGHT >= SEQ_LEN) { POS_HIGHLIGHT = SEQ_LEN - 1; hl.value = POS_HIGHLIGHT; document.getElementById('posHighlightVal').textContent = POS_HIGHLIGHT; }
+  render();
+});
+document.getElementById('dModel').addEventListener('input', e => {
+  D_MODEL = +e.target.value;
+  document.getElementById('dModelVal').textContent = D_MODEL;
+  render();
+});
+document.getElementById('posHighlight').addEventListener('input', e => {
+  POS_HIGHLIGHT = +e.target.value;
+  document.getElementById('posHighlightVal').textContent = POS_HIGHLIGHT;
+  render();
+});
+
+window.addEventListener('resize', render);
+render();
+</script>
+</body>
+</html>
