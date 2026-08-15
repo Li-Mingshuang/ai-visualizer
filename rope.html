@@ -1,0 +1,514 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RoPE 旋转位置编码</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"
+  onload="renderMathInElement(document.body,{delimiters:[{left:'$$',right:'$$',display:true},{left:'$',right:'$',display:false}],throwOnError:false})"></script>
+<style>
+:root{
+  --bg:#FAFAF8;--bg2:#F4F2EF;--bg3:#ECEAE6;
+  --text:#1A1A1C;--text2:#3C3C40;--muted:#8A8A8F;
+  --border:#E2DFD9;--shadow:0 1px 3px rgba(0,0,0,0.05),0 4px 16px rgba(0,0,0,0.05);
+  --accent:#7C3AED;--accent-bg:#F5F3FF;
+  --blue:#1D5FBF;--blue-bg:#EBF2FF;
+  --green:#0E7E3E;--green-bg:#EDFAF3;
+  --red:#B91C1C;--red-bg:#FEF2F2;
+  --orange:#C96A2A;--orange-bg:#FEF0E6;
+  --r:10px;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+html{scroll-behavior:smooth;}
+body{background:var(--bg);color:var(--text);font-family:-apple-system,'Segoe UI',sans-serif;font-size:16px;line-height:1.8;}
+.layout{display:flex;min-height:100vh;}
+.sidebar{width:200px;flex-shrink:0;position:sticky;top:0;height:100vh;background:var(--bg2);border-right:1px solid var(--border);padding:20px 14px;display:flex;flex-direction:column;gap:0;overflow-y:auto;}
+.sidebar h1{font-size:.95rem;color:var(--accent);line-height:1.35;font-weight:800;}
+.sidebar p{font-size:10px;color:var(--muted);margin-top:2px;}
+.sep{border:none;border-top:1px solid var(--border);margin:14px 0;}
+.ctrl{margin-bottom:10px;}
+.ctrl-row-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:3px;}
+.ctrl-row-top label{font-size:10px;color:var(--muted);}
+.ctrl-val{font-size:12px;font-weight:700;color:var(--accent);font-family:monospace;}
+.ctrl input[type=range]{width:100%;accent-color:var(--accent);}
+.nav-sec{display:flex;flex-direction:column;gap:1px;}
+.nav-link{font-size:11px;color:var(--muted);text-decoration:none;padding:5px 8px;border-radius:5px;display:block;transition:all .12s;}
+.nav-link:hover{color:var(--text2);background:var(--bg3);}
+.main{flex:1;overflow-x:hidden;}
+.article{max-width:740px;margin:0 auto;padding:64px 24px 120px;}
+.hero{margin-bottom:52px;padding-bottom:40px;border-bottom:2px solid var(--border);}
+.eyebrow{font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--accent);margin-bottom:14px;}
+h1{font-size:2rem;font-weight:800;line-height:1.2;margin-bottom:16px;}
+.lead{font-size:17px;color:var(--text2);line-height:1.75;}
+section{margin-bottom:60px;}
+h2{font-size:1.25rem;font-weight:700;margin-bottom:14px;padding-bottom:8px;border-bottom:1px solid var(--border);}
+h3{font-size:1rem;font-weight:600;margin:22px 0 8px;}
+p{color:var(--text2);margin-bottom:16px;}
+.callout{border-left:3px solid var(--accent);background:var(--accent-bg);border-radius:0 8px 8px 0;padding:14px 18px;margin:20px 0;font-size:14px;color:var(--text2);}
+.callout.blue{border-color:var(--blue);background:var(--blue-bg);}
+.callout.green{border-color:var(--green);background:var(--green-bg);}
+.math-block{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:18px 24px;margin:20px 0;overflow-x:auto;text-align:center;}
+.math-label{font-size:11px;color:var(--muted);text-align:right;margin-top:6px;font-family:monospace;}
+.viz{background:#fff;border:1px solid var(--border);border-radius:var(--r);box-shadow:var(--shadow);margin:24px -12px;overflow:hidden;}
+.viz-header{padding:11px 20px;background:var(--bg2);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;}
+.viz-dot{width:8px;height:8px;border-radius:50%;}
+.viz-title{font-size:12px;font-weight:600;color:var(--muted);letter-spacing:.04em;text-transform:uppercase;}
+.viz-body{padding:20px;}
+canvas{display:block;}
+.fig-cap{font-size:12px;color:var(--muted);text-align:center;margin-top:10px;line-height:1.5;}
+.ctrl-row{display:flex;gap:20px;flex-wrap:wrap;margin-top:14px;padding-top:14px;border-top:1px solid var(--border);}
+.row-ctrl{display:flex;align-items:center;gap:8px;font-size:13px;}
+.row-ctrl label{color:var(--muted);white-space:nowrap;}
+.row-ctrl input[type=range]{width:80px;accent-color:var(--accent);}
+.rval{color:var(--accent);font-weight:700;font-family:monospace;min-width:32px;}
+hr{border:none;border-top:1px solid var(--border);margin:52px 0;}
+.two-col{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin:20px 0;}
+.panel{background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:14px;}
+.panel-title{font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px;}
+</style>
+</head>
+<body>
+<div class="layout">
+<aside class="sidebar">
+  <div>
+    <h1>RoPE</h1>
+    <p style="margin-top:4px">旋转位置编码图解</p>
+  </div>
+  <hr class="sep">
+  <div class="ctrl">
+    <div class="ctrl-row-top"><label>位置 m（Query）</label><span class="ctrl-val" id="posMVal">3</span></div>
+    <input type="range" id="posM" min="0" max="20" value="3" oninput="redraw()">
+  </div>
+  <div class="ctrl">
+    <div class="ctrl-row-top"><label>位置 n（Key）</label><span class="ctrl-val" id="posNVal">7</span></div>
+    <input type="range" id="posN" min="0" max="20" value="7" oninput="redraw()">
+  </div>
+  <div class="ctrl">
+    <div class="ctrl-row-top"><label>d_model</label><span class="ctrl-val" id="dModelVal">8</span></div>
+    <input type="range" id="dModel" min="4" max="32" step="2" value="8" oninput="redraw()">
+  </div>
+  <hr class="sep">
+  <a href="#s1" class="nav-link">① 问题：相对位置</a>
+  <a href="#s2" class="nav-link">② 旋转操作</a>
+  <a href="#s3" class="nav-link">③ 2D 旋转可视化</a>
+  <a href="#s4" class="nav-link">④ 多维推广</a>
+  <a href="#s5" class="nav-link">⑤ 相对位置性质</a>
+  <a href="#s6" class="nav-link">⑥ 与正弦编码对比</a>
+</aside>
+<main class="main">
+<article class="article">
+
+<header class="hero">
+  <div class="eyebrow">Transformer · 位置编码</div>
+  <h1>RoPE<br>旋转位置编码</h1>
+  <p class="lead">RoPE（Rotary Position Embedding）不把位置信息加到 token 向量上，而是在计算注意力时直接旋转 Q 和 K——旋转后的点积天然只依赖两个位置的相对距离，而非绝对位置。LLaMA、GPT-NeoX、PaLM 均采用此方案。</p>
+</header>
+
+<section id="s1">
+  <h2>1 &nbsp;问题：我们真正需要的是相对位置</h2>
+  <p>注意力机制计算的是 $\text{softmax}(QK^T / \sqrt{d})V$，最终决定"token A 关注 token B 多少"的是 $q_m \cdot k_n$——即位置 $m$ 的 Query 和位置 $n$ 的 Key 的内积。</p>
+  <p>理想情况下，这个内积应该能感知 $m$ 和 $n$ 的<strong>相对距离 $m-n$</strong>，而不只是各自的绝对位置。比如"主语"和"谓语"之间的依赖关系，不论它们在句子里的绝对位置，只要距离相近就应该得到较高的注意力分数。</p>
+  <div class="callout">
+    <strong>正弦位置编码的问题：</strong>它把位置信息加到 token embedding 上（$x + PE(pos)$），然后 QK 再对这个混合向量做投影。位置信息和语义信息被混在一起，模型需要隐式地从中提取相对位置，效率不高。
+  </div>
+  <p>RoPE 的思路是：与其把位置信息加到 embedding 里，不如<strong>直接在 Q 和 K 上做位置相关的变换</strong>，让点积结果自然包含相对位置信息。</p>
+</section>
+
+<hr>
+
+<section id="s2">
+  <h2>2 &nbsp;核心思路：旋转 Q 和 K</h2>
+  <p>RoPE 的做法是对位置 $m$ 处的 Query 向量，绕原点旋转角度 $m\theta$；对位置 $n$ 处的 Key 向量，旋转角度 $n\theta$。</p>
+  <p>以最简单的 2 维情况为例，旋转矩阵为：</p>
+  <div class="math-block">
+    $$R(m\theta) = \begin{pmatrix} \cos m\theta & -\sin m\theta \\ \sin m\theta & \cos m\theta \end{pmatrix}$$
+  </div>
+  <p>旋转后再计算点积：</p>
+  <div class="math-block">
+    $$\langle R(m\theta)\,q,\; R(n\theta)\,k \rangle = \langle q,\; R((n-m)\theta)\,k \rangle$$
+    <div class="math-label">关键性质：旋转后的点积等价于 k 旋转了相对角度 $(n-m)\theta$，只依赖相对位置 $n-m$</div>
+  </div>
+  <div class="callout blue">
+    <strong>直觉：</strong>两个指针各自转了 $m$ 圈和 $n$ 圈，它们之间的夹角永远是 $(n-m)\theta$，与各自的绝对角度无关。
+  </div>
+</section>
+
+<hr>
+
+<section id="s3">
+  <h2>3 &nbsp;2D 旋转可视化</h2>
+  <p>在一个 2D 平面上，RoPE 把每个位置的 Q/K 向量旋转一个和位置成正比的角度。拖动滑块改变位置 $m$（Query）和 $n$（Key），观察旋转后的向量变化，以及它们的夹角如何只依赖 $|m-n|$。</p>
+
+  <div class="viz">
+    <div class="viz-header"><div class="viz-dot" style="background:var(--accent)"></div><span class="viz-title">交互 · 2D 旋转演示</span></div>
+    <div class="viz-body">
+      <div style="display:flex;gap:16px;flex-wrap:wrap;">
+        <div style="flex:1;min-width:160px;">
+          <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:6px">原始向量（pos=0）</div>
+          <canvas id="cRot0" height="200"></canvas>
+        </div>
+        <div style="flex:1;min-width:160px;">
+          <div style="font-size:11px;font-weight:700;color:var(--blue);text-transform:uppercase;margin-bottom:6px">Query 旋转后（pos=m）</div>
+          <canvas id="cRotM" height="200"></canvas>
+        </div>
+        <div style="flex:1;min-width:160px;">
+          <div style="font-size:11px;font-weight:700;color:var(--green);text-transform:uppercase;margin-bottom:6px">Key 旋转后（pos=n）</div>
+          <canvas id="cRotN" height="200"></canvas>
+        </div>
+      </div>
+      <p class="fig-cap" id="rotCaption">蓝色 = Q 向量；绿色 = K 向量；灰色弧 = 旋转角度；夹角只依赖 |m−n|</p>
+    </div>
+  </div>
+
+  <div class="viz">
+    <div class="viz-header"><div class="viz-dot" style="background:var(--blue)"></div><span class="viz-title">图示 · 点积随相对位置的变化</span></div>
+    <div class="viz-body">
+      <canvas id="cDot" height="180"></canvas>
+      <p class="fig-cap">固定 Query 在位置 m，Key 在不同位置 n 时的点积。曲线形状只取决于 |m−n|，不受 m 绝对值影响。</p>
+    </div>
+  </div>
+</section>
+
+<hr>
+
+<section id="s4">
+  <h2>4 &nbsp;多维推广：维度对独立旋转</h2>
+  <p>实际中 $d$ 维向量被分成 $d/2$ 对，每对在各自的 2D 子空间里独立旋转，每对使用不同的旋转频率：</p>
+  <div class="math-block">
+    $$\theta_i = \frac{1}{10000^{2i/d}}, \quad i = 0, 1, \ldots, d/2 - 1$$
+    <div class="math-label">i 越小，θ 越大，旋转越快（高频）；i 越大，θ 越小，旋转越慢（低频）——与正弦位置编码的频率设计完全一致</div>
+  </div>
+  <p>完整的旋转矩阵是块对角的：</p>
+  <div class="math-block">
+    $$R_m = \begin{pmatrix} R(m\theta_0) & & \\ & R(m\theta_1) & \\ & & \ddots \end{pmatrix}$$
+  </div>
+
+  <div class="viz">
+    <div class="viz-header"><div class="viz-dot" style="background:var(--orange)"></div><span class="viz-title">图示 · 各维度对的旋转角度</span></div>
+    <div class="viz-body">
+      <canvas id="cFreq" height="200"></canvas>
+      <p class="fig-cap">不同维度对（i）在位置 m 处的旋转角度。i 越小频率越高，转得越快（捕捉短程关系）；i 越大转得越慢（捕捉长程依赖）。</p>
+    </div>
+  </div>
+</section>
+
+<hr>
+
+<section id="s5">
+  <h2>5 &nbsp;相对位置性质的直观验证</h2>
+  <p>RoPE 最重要的性质：<strong>旋转后的点积只依赖相对位置 $m-n$，与 $m$、$n$ 的绝对值无关。</strong></p>
+  <p>这意味着：即使是在训练时没见过的超长序列上，两个 token 之间的注意力分数依然正确，因为模型学到的是相对位置的关系，而不是绝对位置的编码。这是 RoPE 支持长度外推的根本原因。</p>
+
+  <div class="viz">
+    <div class="viz-header"><div class="viz-dot" style="background:var(--green)"></div><span class="viz-title">验证 · 相对位置不变性</span></div>
+    <div class="viz-body">
+      <canvas id="cRelative" height="200"></canvas>
+      <p class="fig-cap">三条曲线分别以 m=0、m=5、m=10 为基准，横轴为偏移 k=n−m。三条曲线完全重合，验证点积只依赖相对偏移。</p>
+    </div>
+  </div>
+
+  <div class="callout green">
+    <strong>对比正弦绝对位置编码：</strong>正弦 PE 的点积曲线在不同绝对位置下<strong>不完全重合</strong>（只近似依赖相对位置），而 RoPE 是数学上严格成立的等式。这是 RoPE 替代正弦 PE 的核心优势。
+  </div>
+</section>
+
+<hr>
+
+<section id="s6">
+  <h2>6 &nbsp;与正弦位置编码的对比</h2>
+
+  <div class="two-col">
+    <div class="panel">
+      <div class="panel-title">正弦 PE（Sinusoidal）</div>
+      <p style="font-size:14px;color:var(--text2);">把位置 encoding 加到 token embedding：$\tilde{x} = x + PE(pos)$</p>
+      <p style="font-size:14px;color:var(--text2);">$Q = \tilde{x}W_Q$，位置信息和语义混合后再投影</p>
+      <p style="font-size:13px;color:var(--muted);margin-top:8px">点积只近似依赖相对位置，不是严格等式</p>
+    </div>
+    <div class="panel">
+      <div class="panel-title">RoPE（旋转）</div>
+      <p style="font-size:14px;color:var(--text2);">先投影再旋转：$\tilde{q}_m = R(m\theta)\,xW_Q$</p>
+      <p style="font-size:14px;color:var(--text2);">语义和位置完全解耦，旋转操作不改变向量长度</p>
+      <p style="font-size:13px;color:var(--muted);margin-top:8px">点积严格只依赖相对位置，天然支持长度外推</p>
+    </div>
+  </div>
+
+  <div class="viz">
+    <div class="viz-header"><div class="viz-dot" style="background:var(--accent)"></div><span class="viz-title">图示 · 信息流对比</span></div>
+    <div class="viz-body">
+      <canvas id="cCompare" height="160"></canvas>
+      <p class="fig-cap">上方 = 正弦 PE：位置信息混入 embedding 再参与投影；下方 = RoPE：先投影得到纯语义 Q/K，再旋转注入位置</p>
+    </div>
+  </div>
+</section>
+
+</article>
+</main>
+</div>
+
+<script>
+const DPR = window.devicePixelRatio||1;
+function setup(cv,W,H){
+  cv.width=Math.round(W*DPR);cv.height=Math.round(H*DPR);
+  cv.style.width=W+'px';cv.style.height=H+'px';
+  const ctx=cv.getContext('2d');ctx.scale(DPR,DPR);ctx.clearRect(0,0,W,H);
+  return ctx;
+}
+
+function getP(){ return {m:+document.getElementById('posM').value, n:+document.getElementById('posN').value, d:+document.getElementById('dModel').value}; }
+
+const BASE = 10000;
+function theta(i,d){ return 1/Math.pow(BASE, 2*i/d); }
+
+// 旋转一个 2D 向量
+function rotate2D(x,y,angle){ return [x*Math.cos(angle)-y*Math.sin(angle), x*Math.sin(angle)+y*Math.cos(angle)]; }
+
+// ── 3. 2D 旋转图 ─────────────────────────────────
+const Q0 = [0.7, 0.4], K0 = [0.5, -0.6]; // 固定原始向量
+
+function drawUnitCircle(ctx,cx,cy,r,col){
+  ctx.strokeStyle=col+'33';ctx.lineWidth=1;ctx.setLineDash([]);
+  ctx.beginPath();ctx.arc(cx,cy,r,0,Math.PI*2);ctx.stroke();
+  ctx.strokeStyle=col+'22';ctx.lineWidth=0.5;
+  [[1,0],[-1,0],[0,1],[0,-1]].forEach(([dx,dy])=>{
+    ctx.beginPath();ctx.moveTo(cx-r*dx,cy-r*dy);ctx.lineTo(cx+r*dx,cy+r*dy);ctx.stroke();
+  });
+}
+
+function drawVec(ctx,cx,cy,r,vx,vy,col,label){
+  const ex=cx+vx*r, ey=cy-vy*r;
+  ctx.strokeStyle=col;ctx.lineWidth=2;ctx.setLineDash([]);
+  ctx.beginPath();ctx.moveTo(cx,cy);ctx.lineTo(ex,ey);ctx.stroke();
+  const a=Math.atan2(ey-cy,ex-cx),hw=7;
+  ctx.fillStyle=col;ctx.beginPath();
+  ctx.moveTo(ex,ey);
+  ctx.lineTo(ex-hw*Math.cos(a-.4),ey-hw*Math.sin(a-.4));
+  ctx.lineTo(ex-hw*Math.cos(a+.4),ey-hw*Math.sin(a+.4));
+  ctx.closePath();ctx.fill();
+  if(label){ctx.fillStyle=col;ctx.font='bold 11px sans-serif';ctx.textAlign='center';ctx.fillText(label,ex+14*Math.cos(a),ey+14*Math.sin(a));}
+}
+
+function drawArc(ctx,cx,cy,r,a0,a1,col){
+  ctx.strokeStyle=col;ctx.lineWidth=1.5;ctx.setLineDash([3,2]);
+  ctx.beginPath();ctx.arc(cx,cy,r,a0,a1,a1<a0);ctx.stroke();ctx.setLineDash([]);
+}
+
+function drawRotPanel(canvasId, qVec, kVec, angle_q, angle_k, title){
+  const cv=document.getElementById(canvasId);
+  const W=cv.parentElement.clientWidth/3-12, H=200;
+  const ctx=setup(cv,Math.max(W,140),H);
+  const W2=Math.max(W,140);
+  const cx=W2/2,cy=H/2,r=Math.min(W2,H)/2-20;
+  drawUnitCircle(ctx,cx,cy,r,'#9CA3AF');
+  // 原始方向（虚线）
+  drawArc(ctx,cx,cy,r*0.3,-Math.PI/2,-Math.PI/2+angle_q,'#3B82F644');
+  drawArc(ctx,cx,cy,r*0.35,-Math.PI/2,-Math.PI/2+angle_k,'#10B98144');
+  drawVec(ctx,cx,cy,r,qVec[0],qVec[1],'#3B82F6','q');
+  drawVec(ctx,cx,cy,r,kVec[0],kVec[1],'#10B981','k');
+  // 夹角弧
+  const aq=Math.atan2(qVec[1],qVec[0]), ak=Math.atan2(kVec[1],kVec[0]);
+  ctx.strokeStyle='#374151';ctx.lineWidth=1;ctx.setLineDash([2,2]);
+  ctx.beginPath();ctx.arc(cx,cy,r*0.25,-aq,-ak,aq<ak);ctx.stroke();ctx.setLineDash([]);
+  const dot=(qVec[0]*kVec[0]+qVec[1]*kVec[1]).toFixed(3);
+  ctx.fillStyle='#374151';ctx.font='10px monospace';ctx.textAlign='center';
+  ctx.fillText(`q·k = ${dot}`,cx,H-8);
+}
+
+function drawRot(){
+  const {m,n,d}=getP();
+  const t=theta(0,d);
+  const [qrx,qry]=rotate2D(Q0[0],Q0[1],m*t);
+  const [krx,kry]=rotate2D(K0[0],K0[1],n*t);
+  drawRotPanel('cRot0',Q0,K0,0,0,'原始');
+  drawRotPanel('cRotM',[qrx,qry],K0,m*t,0,'Q旋转');
+  drawRotPanel('cRotN',Q0,[krx,kry],0,n*t,'K旋转');
+  document.getElementById('rotCaption').textContent =
+    `m=${m}, n=${n}, θ₀=${t.toFixed(4)} | Q旋转 ${(m*t*180/Math.PI).toFixed(1)}°，K旋转 ${(n*t*180/Math.PI).toFixed(1)}°，夹角差 ${((m-n)*t*180/Math.PI).toFixed(1)}°`;
+}
+
+// ── 点积随相对位置变化 ──────────────────────────────
+function drawDot(){
+  const {m,n,d}=getP();
+  const cv=document.getElementById('cDot');
+  const W=cv.parentElement.clientWidth-40,H=180;
+  const ctx=setup(cv,W,H);
+  const pL=50,pR=20,pT=20,pB=36,pW=W-pL-pR,pH=H-pT-pB;
+  const maxPos=20;
+
+  // 网格
+  ctx.strokeStyle='#E5E3DF';ctx.lineWidth=0.5;
+  [-1,0,1].forEach(v=>{
+    const y=pT+pH*(1-(v+1)/2);
+    ctx.beginPath();ctx.moveTo(pL,y);ctx.lineTo(pL+pW,y);ctx.stroke();
+  });
+  ctx.strokeStyle='#9CA3AF';ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(pL,pT+pH/2);ctx.lineTo(pL+pW,pT+pH/2);ctx.stroke();
+
+  // 点积曲线：固定 m，扫描 n
+  const t=theta(0,d);
+  ctx.strokeStyle='#7C3AED';ctx.lineWidth=2.5;ctx.lineCap='round';
+  ctx.beginPath();
+  for(let ni=0;ni<=maxPos;ni++){
+    const [qrx,qry]=rotate2D(Q0[0],Q0[1],m*t);
+    const [krx,kry]=rotate2D(K0[0],K0[1],ni*t);
+    const dot=qrx*krx+qry*kry;
+    const x=pL+ni/maxPos*pW, y=pT+pH*(1-(dot+1)/2);
+    ni===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
+  }
+  ctx.stroke();ctx.lineCap='butt';
+
+  // 当前 n 位置
+  const [qrx,qry]=rotate2D(Q0[0],Q0[1],m*t);
+  const [krx,kry]=rotate2D(K0[0],K0[1],n*t);
+  const dot=qrx*krx+qry*kry;
+  ctx.fillStyle='#7C3AED';ctx.beginPath();ctx.arc(pL+n/maxPos*pW,pT+pH*(1-(dot+1)/2),5,0,Math.PI*2);ctx.fill();
+
+  ctx.fillStyle='#9CA3AF';ctx.font='10px monospace';ctx.textAlign='right';
+  [-1,0,1].forEach(v=>ctx.fillText(v,pL-4,pT+pH*(1-(v+1)/2)+3));
+  ctx.textAlign='center';
+  [0,5,10,15,20].forEach(p=>ctx.fillText(p,pL+p/maxPos*pW,pT+pH+16));
+  ctx.fillStyle='#9CA3AF';ctx.font='11px sans-serif';
+  ctx.save();ctx.translate(14,H/2);ctx.rotate(-Math.PI/2);ctx.textAlign='center';ctx.fillText('点积',0,0);ctx.restore();
+  ctx.textAlign='center';ctx.fillText('Key 位置 n',W/2,H);
+  ctx.fillStyle='#7C3AED';ctx.font='bold 11px sans-serif';
+  ctx.fillText(`m = ${m}（固定）`,pL+20,pT+14);
+}
+
+// ── 4. 频率图 ─────────────────────────────────────
+function drawFreq(){
+  const {m,d}=getP();
+  const cv=document.getElementById('cFreq');
+  const W=cv.parentElement.clientWidth-40,H=200;
+  const ctx=setup(cv,W,H);
+  const pL=55,pR=20,pT=24,pB=36,pW=W-pL-pR,pH=H-pT-pB;
+  const n=d/2;
+  const maxAngle=Math.max(...Array.from({length:n},(_,i)=>m*theta(i,d)))*1.1||0.1;
+
+  ctx.strokeStyle='#E5E3DF';ctx.lineWidth=0.5;
+  [0,.25,.5,.75,1].forEach(v=>{const y=pT+pH*(1-v);ctx.beginPath();ctx.moveTo(pL,y);ctx.lineTo(pL+pW,y);ctx.stroke();});
+
+  const barW=pW/n;
+  const colors=['#7C3AED','#3B82F6','#10B981','#F59E0B','#EF4444','#EC4899','#14B8A6','#F97316'];
+  for(let i=0;i<n;i++){
+    const angle=m*theta(i,d);
+    const norm=angle/maxAngle;
+    const x=pL+i*barW, bh=norm*pH;
+    const col=colors[i%colors.length];
+    ctx.fillStyle=col+'99';
+    ctx.fillRect(x+2,pT+pH-bh,barW-4,bh);
+    ctx.strokeStyle=col;ctx.lineWidth=1;
+    ctx.strokeRect(x+2,pT+pH-bh,barW-4,bh);
+    ctx.fillStyle=col;ctx.font='9px monospace';ctx.textAlign='center';
+    ctx.fillText(`i=${i}`,x+barW/2,pT+pH+14);
+    if(bh>14){ctx.fillStyle='#fff';ctx.fillText((angle).toFixed(2),x+barW/2,pT+pH-bh+10);}
+  }
+
+  ctx.fillStyle='#9CA3AF';ctx.font='10px monospace';ctx.textAlign='right';
+  [0,.25,.5,.75,1].forEach(v=>ctx.fillText((v*maxAngle).toFixed(2),pL-4,pT+pH*(1-v)+3));
+  ctx.fillStyle='#9CA3AF';ctx.font='11px sans-serif';
+  ctx.save();ctx.translate(14,H/2);ctx.rotate(-Math.PI/2);ctx.textAlign='center';ctx.fillText('旋转角度 mθᵢ',0,0);ctx.restore();
+  ctx.textAlign='center';ctx.fillText('维度对 i',W/2,H);
+  ctx.fillStyle='#7C3AED';ctx.font='bold 11px sans-serif';ctx.textAlign='left';
+  ctx.fillText(`pos = ${m}`,pL+4,pT+14);
+}
+
+// ── 5. 相对位置不变性 ─────────────────────────────
+function drawRelative(){
+  const {d}=getP();
+  const cv=document.getElementById('cRelative');
+  const W=cv.parentElement.clientWidth-40,H=200;
+  const ctx=setup(cv,W,H);
+  const pL=50,pR=20,pT=20,pB=36,pW=W-pL-pR,pH=H-pT-pB;
+  const maxK=15,t=theta(0,d);
+
+  ctx.strokeStyle='#E5E3DF';ctx.lineWidth=0.5;
+  [-1,0,1].forEach(v=>{const y=pT+pH*(1-(v+1)/2);ctx.beginPath();ctx.moveTo(pL,y);ctx.lineTo(pL+pW,y);ctx.stroke();});
+  ctx.strokeStyle='#9CA3AF';ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(pL,pT+pH/2);ctx.lineTo(pL+pW,pT+pH/2);ctx.stroke();
+
+  // 三条基准位置的曲线
+  [[0,'#7C3AED'],[5,'#3B82F6'],[10,'#10B981']].forEach(([base,col])=>{
+    ctx.strokeStyle=col;ctx.lineWidth=2;ctx.setLineDash(base===0?[]:[4,3]);ctx.lineCap='round';
+    ctx.beginPath();
+    for(let k=0;k<=maxK;k++){
+      const m=base, n=base+k;
+      const [qx,qy]=rotate2D(Q0[0],Q0[1],m*t);
+      const [kx,ky]=rotate2D(K0[0],K0[1],n*t);
+      const dot=qx*kx+qy*ky;
+      const x=pL+k/maxK*pW, y=pT+pH*(1-(dot+1)/2);
+      k===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
+    }
+    ctx.stroke();ctx.setLineDash([]);ctx.lineCap='butt';
+    ctx.fillStyle=col;ctx.font='10px sans-serif';ctx.textAlign='left';
+    ctx.fillText(`m=${base}`,pL+4,pT+22+[0,14,28][base===0?0:base===5?1:2]);
+  });
+
+  ctx.fillStyle='#9CA3AF';ctx.font='10px monospace';ctx.textAlign='right';
+  [-1,0,1].forEach(v=>ctx.fillText(v,pL-4,pT+pH*(1-(v+1)/2)+3));
+  ctx.textAlign='center';
+  [0,5,10,15].forEach(k=>ctx.fillText(k,pL+k/maxK*pW,pT+pH+16));
+  ctx.fillStyle='#9CA3AF';ctx.font='11px sans-serif';
+  ctx.save();ctx.translate(14,H/2);ctx.rotate(-Math.PI/2);ctx.textAlign='center';ctx.fillText('点积',0,0);ctx.restore();
+  ctx.textAlign='center';ctx.fillText('相对偏移 k = n−m',W/2,H);
+}
+
+// ── 6. 信息流对比 ─────────────────────────────────
+function drawCompare(){
+  const cv=document.getElementById('cCompare');
+  const W=cv.parentElement.clientWidth-40,H=160;
+  const ctx=setup(cv,W,H);
+  const col_pe='#C96A2A', col_rope='#7C3AED';
+
+  function box(x,y,w,h,col,label,sub){
+    ctx.fillStyle='#fff';ctx.strokeStyle=col;ctx.lineWidth=1.5;
+    ctx.beginPath();ctx.roundRect?ctx.roundRect(x,y,w,h,6):ctx.rect(x,y,w,h);ctx.fill();ctx.stroke();
+    ctx.fillStyle=col;ctx.font='bold 11px sans-serif';ctx.textAlign='center';ctx.fillText(label,x+w/2,y+h/2+2);
+    if(sub){ctx.fillStyle='#9CA3AF';ctx.font='9px sans-serif';ctx.fillText(sub,x+w/2,y+h/2+13);}
+  }
+  function arr(x1,y1,x2,y2,col,lbl){
+    ctx.strokeStyle=col;ctx.lineWidth=1.5;
+    ctx.beginPath();ctx.moveTo(x1,y1);ctx.lineTo(x2,y2);ctx.stroke();
+    const a=Math.atan2(y2-y1,x2-x1),hw=6;
+    ctx.fillStyle=col;ctx.beginPath();ctx.moveTo(x2,y2);
+    ctx.lineTo(x2-hw*Math.cos(a-.4),y2-hw*Math.sin(a-.4));
+    ctx.lineTo(x2-hw*Math.cos(a+.4),y2-hw*Math.sin(a+.4));
+    ctx.closePath();ctx.fill();
+    if(lbl){ctx.fillStyle=col;ctx.font='9px sans-serif';ctx.textAlign='center';ctx.fillText(lbl,(x1+x2)/2,(y1+y2)/2-5);}
+  }
+
+  // 正弦PE行
+  ctx.fillStyle='#9CA3AF';ctx.font='bold 10px sans-serif';ctx.textAlign='left';ctx.fillText('正弦PE',4,22);
+  box(50,8,60,24,col_pe,'x','token');
+  box(120,8,60,24,'#9CA3AF','PE(pos)','位置');
+  box(210,8,40,24,col_pe,'+','混合');
+  box(270,8,60,24,col_pe,'W_Q','投影');
+  box(350,8,50,24,col_pe,'q̃_m','Q');
+  arr(110,20,120,20,col_pe,'');arr(180,20,210,20,'#9CA3AF','');arr(250,20,270,20,col_pe,'');arr(330,20,350,20,col_pe,'');
+  ctx.fillStyle='#C96A2A44';ctx.fillRect(120,8,90,24);
+  ctx.fillStyle='#C96A2A';ctx.font='9px sans-serif';ctx.textAlign='center';ctx.fillText('位置与语义混合',165,42);
+
+  // RoPE行
+  ctx.fillStyle='#9CA3AF';ctx.font='bold 10px sans-serif';ctx.textAlign='left';ctx.fillText('RoPE',4,100);
+  box(50,86,60,24,col_rope,'x','token');
+  box(130,86,60,24,col_rope,'W_Q','投影');
+  box(210,86,50,24,col_rope,'q_m','纯语义');
+  box(285,86,70,24,col_rope,'R(mθ)·','旋转');
+  box(375,86,50,24,col_rope,'q̃_m','Q');
+  arr(110,98,130,98,col_rope,'');arr(190,98,210,98,col_rope,'');arr(260,98,285,98,col_rope,'位置注入');arr(355,98,375,98,col_rope,'');
+  ctx.fillStyle='#7C3AED44';ctx.fillRect(285,86,70,24);
+  ctx.fillStyle='#7C3AED';ctx.font='9px sans-serif';ctx.textAlign='center';ctx.fillText('语义与位置严格解耦',310,120);
+}
+
+function redraw(){
+  const {m,n,d}=getP();
+  document.getElementById('posMVal').textContent=m;
+  document.getElementById('posNVal').textContent=n;
+  document.getElementById('dModelVal').textContent=d;
+  drawRot();drawDot();drawFreq();drawRelative();drawCompare();
+}
+window.addEventListener('resize',redraw);
+redraw();
+</script>
+</body>
+</html>

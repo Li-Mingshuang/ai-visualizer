@@ -1,0 +1,497 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RMSNorm 归一化</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"
+  onload="renderMathInElement(document.body,{delimiters:[{left:'$$',right:'$$',display:true},{left:'$',right:'$',display:false}],throwOnError:false})"></script>
+<style>
+:root{
+  --bg:#FAFAF8;--bg2:#F4F2EF;--bg3:#ECEAE6;
+  --text:#1A1A1C;--text2:#3C3C40;--muted:#8A8A8F;
+  --border:#E2DFD9;--shadow:0 1px 3px rgba(0,0,0,0.05),0 4px 16px rgba(0,0,0,0.05);
+  --accent:#0E7E3E;--accent-bg:#EDFAF3;
+  --blue:#1D5FBF;--blue-bg:#EBF2FF;
+  --red:#B91C1C;--red-bg:#FEF2F2;
+  --purple:#7C3AED;--purple-bg:#F5F3FF;
+  --orange:#C96A2A;--orange-bg:#FEF0E6;
+  --r:10px;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+html{scroll-behavior:smooth;}
+body{background:var(--bg);color:var(--text);font-family:-apple-system,'Segoe UI',sans-serif;font-size:16px;line-height:1.8;}
+.layout{display:flex;min-height:100vh;}
+.sidebar{width:200px;flex-shrink:0;position:sticky;top:0;height:100vh;background:var(--bg2);border-right:1px solid var(--border);padding:20px 14px;display:flex;flex-direction:column;gap:0;overflow-y:auto;}
+.sidebar h1{font-size:.95rem;color:var(--accent);line-height:1.35;font-weight:800;}
+.sidebar p{font-size:10px;color:var(--muted);margin-top:2px;}
+.sep{border:none;border-top:1px solid var(--border);margin:14px 0;}
+.ctrl{margin-bottom:10px;}
+.ctrl-row-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:3px;}
+.ctrl-row-top label{font-size:10px;color:var(--muted);}
+.ctrl-val{font-size:12px;font-weight:700;color:var(--accent);font-family:monospace;}
+.ctrl input[type=range]{width:100%;accent-color:var(--accent);}
+.nav-sec{display:flex;flex-direction:column;gap:1px;}
+.nav-link{font-size:11px;color:var(--muted);text-decoration:none;padding:5px 8px;border-radius:5px;display:block;transition:all .12s;}
+.nav-link:hover{color:var(--text2);background:var(--bg3);}
+.main{flex:1;overflow-x:hidden;}
+.article{max-width:740px;margin:0 auto;padding:64px 24px 120px;}
+.hero{margin-bottom:52px;padding-bottom:40px;border-bottom:2px solid var(--border);}
+.eyebrow{font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--accent);margin-bottom:14px;}
+h1{font-size:2rem;font-weight:800;line-height:1.2;margin-bottom:16px;}
+.lead{font-size:17px;color:var(--text2);line-height:1.75;}
+section{margin-bottom:60px;}
+h2{font-size:1.25rem;font-weight:700;margin-bottom:14px;padding-bottom:8px;border-bottom:1px solid var(--border);}
+h3{font-size:1rem;font-weight:600;margin:22px 0 8px;}
+p{color:var(--text2);margin-bottom:16px;}
+.callout{border-left:3px solid var(--accent);background:var(--accent-bg);border-radius:0 8px 8px 0;padding:14px 18px;margin:20px 0;font-size:14px;color:var(--text2);}
+.callout.blue{border-color:var(--blue);background:var(--blue-bg);}
+.callout.red{border-color:var(--red);background:var(--red-bg);}
+.callout.purple{border-color:var(--purple);background:var(--purple-bg);}
+.math-block{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:18px 24px;margin:20px 0;overflow-x:auto;text-align:center;}
+.math-label{font-size:11px;color:var(--muted);text-align:right;margin-top:6px;font-family:monospace;}
+.viz{background:#fff;border:1px solid var(--border);border-radius:var(--r);box-shadow:var(--shadow);margin:24px -12px;overflow:hidden;}
+.viz-header{padding:11px 20px;background:var(--bg2);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;}
+.viz-dot{width:8px;height:8px;border-radius:50%;}
+.viz-title{font-size:12px;font-weight:600;color:var(--muted);letter-spacing:.04em;text-transform:uppercase;}
+.viz-body{padding:20px;}
+canvas{display:block;}
+.fig-cap{font-size:12px;color:var(--muted);text-align:center;margin-top:10px;line-height:1.5;}
+.ctrl-row{display:flex;gap:20px;flex-wrap:wrap;margin-top:14px;padding-top:14px;border-top:1px solid var(--border);}
+.row-ctrl{display:flex;align-items:center;gap:8px;font-size:13px;}
+.row-ctrl label{color:var(--muted);white-space:nowrap;}
+.row-ctrl input[type=range]{width:80px;accent-color:var(--accent);}
+.rval{color:var(--accent);font-weight:700;font-family:monospace;min-width:32px;}
+hr{border:none;border-top:1px solid var(--border);margin:52px 0;}
+.two-col{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin:20px 0;}
+.panel{background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:16px;}
+.panel-title{font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px;}
+.step-num{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;background:var(--accent);color:#fff;font-size:11px;font-weight:700;margin-right:8px;flex-shrink:0;}
+.step-row{display:flex;align-items:flex-start;margin-bottom:12px;}
+</style>
+</head>
+<body>
+<div class="layout">
+<aside class="sidebar">
+  <div>
+    <h1>RMSNorm</h1>
+    <p style="margin-top:4px">均方根归一化图解</p>
+  </div>
+  <hr class="sep">
+  <div class="ctrl">
+    <div class="ctrl-row-top"><label>激活值方差（模拟）</label><span class="ctrl-val" id="varianceVal">2.0</span></div>
+    <input type="range" id="variance" min="0.1" max="5" step="0.1" value="2.0" oninput="redraw()">
+  </div>
+  <div class="ctrl">
+    <div class="ctrl-row-top"><label>激活值均值偏移</label><span class="ctrl-val" id="meanShiftVal">1.0</span></div>
+    <input type="range" id="meanShift" min="-3" max="3" step="0.1" value="1.0" oninput="redraw()">
+  </div>
+  <div class="ctrl">
+    <div class="ctrl-row-top"><label>缩放参数 γ</label><span class="ctrl-val" id="gammaVal">1.0</span></div>
+    <input type="range" id="gamma" min="0.2" max="3" step="0.1" value="1.0" oninput="redraw()">
+  </div>
+  <hr class="sep">
+  <a href="#s1" class="nav-link">① 为什么需要归一化</a>
+  <a href="#s2" class="nav-link">② LayerNorm 回顾</a>
+  <a href="#s3" class="nav-link">③ RMSNorm 公式</a>
+  <a href="#s4" class="nav-link">④ 逐步计算演示</a>
+  <a href="#s5" class="nav-link">⑤ 分布变换可视化</a>
+  <a href="#s6" class="nav-link">⑥ 与 LayerNorm 对比</a>
+</aside>
+<main class="main">
+<article class="article">
+
+<header class="hero">
+  <div class="eyebrow">Transformer · 归一化</div>
+  <h1>RMSNorm<br>均方根层归一化</h1>
+  <p class="lead">RMSNorm 是 LayerNorm 的简化版——去掉均值中心化，只做尺度归一化。Llama、Mistral、Gemma 等现代大模型全部采用 RMSNorm 替代 LayerNorm，效果相近而计算更快。</p>
+</header>
+
+<section id="s1">
+  <h2>1 &nbsp;为什么需要归一化</h2>
+  <p>深层神经网络训练时面临一个问题：每一层的输出分布会随参数更新不断漂移，导致后续层的输入分布不稳定。这被称为<strong>内部协变量偏移（Internal Covariate Shift）</strong>。</p>
+  <p>直观来说，如果某一层的激活值突然变得很大（比如均值从 0 漂移到 10，标准差从 1 变成 5），下一层接收到这些值时，梯度会变得非常大或非常小，训练不稳定。</p>
+  <div class="callout red">
+    <strong>具体危害：</strong>激活值尺度过大 → 梯度爆炸；激活值方差过小 → 梯度消失。归一化操作把激活值的尺度控制在合理范围，让每一层的输入分布保持相对稳定。
+  </div>
+  <p>LayerNorm 和 RMSNorm 都是在<strong>特征维度</strong>上做归一化——对单个 token 的所有特征维度进行标准化，而不是像 BatchNorm 那样对一个 batch 里同一特征位置归一化。</p>
+</section>
+
+<hr>
+
+<section id="s2">
+  <h2>2 &nbsp;LayerNorm 回顾</h2>
+  <p>给定一个 $d$ 维向量 $\mathbf{x}$，LayerNorm 分两步：先中心化（减均值），再缩放（除标准差），最后乘可学习参数：</p>
+  <div class="math-block">
+    $$\mu = \frac{1}{d}\sum_{i=1}^d x_i \qquad \sigma = \sqrt{\frac{1}{d}\sum_{i=1}^d (x_i-\mu)^2 + \varepsilon}$$
+    $$\text{LayerNorm}(\mathbf{x}) = \frac{\mathbf{x} - \mu}{\sigma} \cdot \gamma + \beta$$
+    <div class="math-label">γ（缩放）和 β（偏移）是可学习参数；ε 防止除零</div>
+  </div>
+  <p>LayerNorm 有两个可学习参数：$\gamma$（scale）和 $\beta$（shift）。它做了两件事：把分布中心移到 0（减均值），再把方差归一化到 1（除标准差）。</p>
+</section>
+
+<hr>
+
+<section id="s3">
+  <h2>3 &nbsp;RMSNorm：去掉均值中心化</h2>
+  <p>RMSNorm 的出发点是：<strong>中心化（减均值）对训练稳定性的贡献其实不大</strong>，真正重要的是控制激活值的<strong>尺度（Scale）</strong>。所以直接去掉减均值这一步，只保留尺度归一化：</p>
+  <div class="math-block">
+    $$\text{RMS}(\mathbf{x}) = \sqrt{\frac{1}{d}\sum_{i=1}^d x_i^2}$$
+    $$\text{RMSNorm}(\mathbf{x}) = \frac{\mathbf{x}}{\text{RMS}(\mathbf{x})} \cdot \gamma$$
+    <div class="math-label">只有 γ 一个可学习参数，没有 β；不减均值，直接除以 RMS</div>
+  </div>
+
+  <div class="two-col">
+    <div class="panel">
+      <div class="panel-title">LayerNorm 做了什么</div>
+      <div class="step-row"><span class="step-num">1</span><span style="font-size:14px;color:var(--text2)">计算均值 $\mu$</span></div>
+      <div class="step-row"><span class="step-num">2</span><span style="font-size:14px;color:var(--text2)">减均值（中心化）</span></div>
+      <div class="step-row"><span class="step-num">3</span><span style="font-size:14px;color:var(--text2)">计算标准差 $\sigma$</span></div>
+      <div class="step-row"><span class="step-num">4</span><span style="font-size:14px;color:var(--text2)">除标准差（缩放）</span></div>
+      <div class="step-row"><span class="step-num">5</span><span style="font-size:14px;color:var(--text2)">乘 $\gamma$，加 $\beta$</span></div>
+    </div>
+    <div class="panel">
+      <div class="panel-title">RMSNorm 做了什么</div>
+      <div class="step-row" style="opacity:.3"><span class="step-num" style="background:#9CA3AF">1</span><span style="font-size:14px;color:var(--muted);text-decoration:line-through">计算均值 $\mu$</span></div>
+      <div class="step-row" style="opacity:.3"><span class="step-num" style="background:#9CA3AF">2</span><span style="font-size:14px;color:var(--muted);text-decoration:line-through">减均值（中心化）</span></div>
+      <div class="step-row"><span class="step-num">1</span><span style="font-size:14px;color:var(--text2)">计算 RMS（均方根）</span></div>
+      <div class="step-row"><span class="step-num">2</span><span style="font-size:14px;color:var(--text2)">除 RMS（尺度归一化）</span></div>
+      <div class="step-row"><span class="step-num">3</span><span style="font-size:14px;color:var(--text2)">乘 $\gamma$（无 $\beta$）</span></div>
+    </div>
+  </div>
+
+  <div class="callout">
+    <strong>为什么去掉中心化依然有效？</strong>RMS 归一化后，向量的模长（L2 范数）被控制为 $\sqrt{d}$，各维度的尺度统一。尽管均值不为 0，但激活值尺度稳定这个目标已经达到，模型照样能正常训练。
+  </div>
+</section>
+
+<hr>
+
+<section id="s4">
+  <h2>4 &nbsp;逐步计算演示</h2>
+  <p>用一个具体的 4 维向量走一遍 RMSNorm 的完整计算过程，拖动侧边栏滑块改变输入分布。</p>
+
+  <div class="viz">
+    <div class="viz-header"><div class="viz-dot" style="background:var(--accent)"></div><span class="viz-title">交互 · 计算步骤分解</span></div>
+    <div class="viz-body">
+      <canvas id="cSteps" height="260"></canvas>
+      <p class="fig-cap">每一列是一个维度；每一行是计算的一个阶段。颜色深浅反映数值大小。</p>
+      <div id="stepsDetail" style="margin-top:12px;font-size:13px;color:var(--text2);background:var(--bg2);padding:12px;border-radius:8px;font-family:monospace;line-height:2;"></div>
+    </div>
+  </div>
+</section>
+
+<hr>
+
+<section id="s5">
+  <h2>5 &nbsp;分布变换可视化</h2>
+  <p>RMSNorm 如何改变一批激活值的分布。输入是带有均值偏移和方差的真实激活分布，输出的尺度被控制在 $\gamma$ 倍单位尺度附近。</p>
+
+  <div class="viz">
+    <div class="viz-header"><div class="viz-dot" style="background:var(--blue)"></div><span class="viz-title">交互 · 输入 vs 输出分布</span></div>
+    <div class="viz-body">
+      <canvas id="cDist" height="220"></canvas>
+      <p class="fig-cap">橙色 = 输入分布（有均值偏移，方差较大）；绿色 = RMSNorm 后的分布（尺度归一化，均值不一定为 0）；蓝色虚线 = LayerNorm 后（均值强制为 0）</p>
+    </div>
+  </div>
+
+  <div class="callout blue">
+    <strong>注意均值不为 0：</strong>RMSNorm 后输出的均值通常不为 0（除非输入均值恰好为 0）。这和 LayerNorm 不同——LayerNorm 会把均值强制归零。实验表明这个差异对大多数任务影响很小。
+  </div>
+</section>
+
+<hr>
+
+<section id="s6">
+  <h2>6 &nbsp;与 LayerNorm 的全面对比</h2>
+
+  <div class="viz">
+    <div class="viz-header"><div class="viz-dot" style="background:var(--purple)"></div><span class="viz-title">图示 · 计算量与效果对比</span></div>
+    <div class="viz-body">
+      <canvas id="cCompare" height="200"></canvas>
+      <p class="fig-cap">左：每个 token 的归一化计算步骤数量对比；右：归一化后的分布特性对比</p>
+    </div>
+  </div>
+
+  <div class="two-col" style="margin-top:20px;">
+    <div class="panel">
+      <div class="panel-title">LayerNorm</div>
+      <p style="font-size:14px;color:var(--text2)">• 需要计算均值和方差，两次遍历特征维度</p>
+      <p style="font-size:14px;color:var(--text2)">• 输出均值严格为 0</p>
+      <p style="font-size:14px;color:var(--text2)">• 两个可学习参数 γ 和 β</p>
+      <p style="font-size:13px;color:var(--muted);margin-top:6px">用于：BERT、GPT-2、T5 等早期模型</p>
+    </div>
+    <div class="panel">
+      <div class="panel-title">RMSNorm</div>
+      <p style="font-size:14px;color:var(--text2)">• 只需计算均方根，一次遍历</p>
+      <p style="font-size:14px;color:var(--text2)">• 输出均值不强制为 0</p>
+      <p style="font-size:14px;color:var(--text2)">• 一个可学习参数 γ（无 β）</p>
+      <p style="font-size:13px;color:var(--muted);margin-top:6px">用于：LLaMA、Mistral、Gemma、Qwen 等</p>
+    </div>
+  </div>
+
+  <div class="callout purple">
+    <strong>为什么现代大模型更偏好 RMSNorm？</strong>在大模型（数十亿参数）训练中，归一化操作会被调用数百万次。RMSNorm 省去了均值计算，理论上节省约 7% 的归一化计算量。对于超大规模训练，这个节省是实质性的。同时论文表明性能没有明显下降。
+  </div>
+</section>
+
+</article>
+</main>
+</div>
+
+<script>
+const DPR=window.devicePixelRatio||1;
+function setup(cv,W,H){
+  cv.width=Math.round(W*DPR);cv.height=Math.round(H*DPR);
+  cv.style.width=W+'px';cv.style.height=H+'px';
+  const ctx=cv.getContext('2d');ctx.scale(DPR,DPR);ctx.clearRect(0,0,W,H);
+  return ctx;
+}
+
+function getP(){
+  return{
+    variance:+document.getElementById('variance').value,
+    meanShift:+document.getElementById('meanShift').value,
+    gamma:+document.getElementById('gamma').value,
+  };
+}
+
+// 生成固定的 4 维激活向量（基于参数变化）
+function getVec(){
+  const {variance,meanShift}=getP();
+  const base=[1.2,-0.8,2.1,-0.5];
+  return base.map(v=>v*Math.sqrt(variance)+meanShift);
+}
+
+function rms(v){return Math.sqrt(v.reduce((s,x)=>s+x*x,0)/v.length);}
+function mean(v){return v.reduce((a,b)=>a+b,0)/v.length;}
+function std(v){const m=mean(v);return Math.sqrt(v.reduce((s,x)=>s+(x-m)*(x-m),0)/v.length);}
+
+// 颜色映射：负→蓝，0→白，正→橙
+function valColor(v,max){
+  const t=Math.max(-1,Math.min(1,v/Math.max(max,0.01)));
+  if(t>=0){
+    const r=Math.round(255-t*60),g=Math.round(255-t*130),b=Math.round(255-t*220);
+    return `rgb(${r},${g},${b})`;
+  } else {
+    const s=-t;
+    const r=Math.round(255-s*180),g=Math.round(255-s*80),b=Math.round(255);
+    return `rgb(${r},${g},${b})`;
+  }
+}
+
+// ── 4. 步骤图 ─────────────────────────────────────
+function drawSteps(){
+  const cv=document.getElementById('cSteps');
+  const W=cv.parentElement.clientWidth-40,H=260;
+  const ctx=setup(cv,W,H);
+  const {gamma}=getP();
+  const x=getVec();
+  const r=rms(x);
+  const normed=x.map(v=>v/r);
+  const scaled=normed.map(v=>v*gamma);
+
+  const rows=[
+    {label:'输入 x',values:x,color:'#C96A2A'},
+    {label:`÷ RMS(${r.toFixed(2)})`,values:normed,color:'#1D5FBF'},
+    {label:`× γ(${gamma.toFixed(1)})`,values:scaled,color:'#0E7E3E'},
+  ];
+
+  const d=x.length;
+  const cellW=Math.min(80,(W-120)/d);
+  const cellH=52,offX=110,offY=20,gap=8;
+  const maxVal=Math.max(...rows.flatMap(r=>r.values.map(Math.abs)));
+
+  rows.forEach((row,ri)=>{
+    const y=offY+ri*(cellH+gap);
+    // 行标签
+    ctx.fillStyle=row.color;ctx.font='bold 11px sans-serif';ctx.textAlign='right';
+    ctx.fillText(row.label,offX-8,y+cellH/2+4);
+    // 维度格子
+    row.values.forEach((val,i)=>{
+      const x2=offX+i*cellW;
+      ctx.fillStyle=valColor(val,maxVal);
+      ctx.beginPath();ctx.roundRect?ctx.roundRect(x2+2,y+2,cellW-4,cellH-4,6):ctx.rect(x2+2,y+2,cellW-4,cellH-4);ctx.fill();
+      ctx.strokeStyle=row.color+'44';ctx.lineWidth=1;
+      ctx.beginPath();ctx.roundRect?ctx.roundRect(x2+2,y+2,cellW-4,cellH-4,6):ctx.rect(x2+2,y+2,cellW-4,cellH-4);ctx.stroke();
+      ctx.fillStyle=Math.abs(val)>maxVal*0.4?'#fff':row.color;
+      ctx.font='bold 11px monospace';ctx.textAlign='center';
+      ctx.fillText(val.toFixed(2),x2+cellW/2,y+cellH/2+4);
+    });
+    // 箭头
+    if(ri<rows.length-1){
+      const ay=y+cellH+gap/2;
+      ctx.strokeStyle='#9CA3AF';ctx.lineWidth=1;
+      ctx.beginPath();ctx.moveTo(offX+d*cellW/2,ay-2);ctx.lineTo(offX+d*cellW/2,ay+2);ctx.stroke();
+    }
+  });
+
+  // 维度标签
+  x.forEach((_,i)=>{
+    ctx.fillStyle='#9CA3AF';ctx.font='10px monospace';ctx.textAlign='center';
+    ctx.fillText(`d${i}`,offX+i*cellW+cellW/2,offY-4);
+  });
+
+  // 计算过程标注
+  const rmsVal=rms(x);
+  ctx.fillStyle='#374151';ctx.font='10px monospace';ctx.textAlign='left';
+  ctx.fillText(`RMS = √(${x.map(v=>v.toFixed(1)+'²').join('+')}) / ${d} = ${rmsVal.toFixed(3)}`,offX,offY+3*(cellH+gap)+20);
+
+  // 更新详情
+  document.getElementById('stepsDetail').innerHTML =
+    `x = [${x.map(v=>v.toFixed(3)).join(', ')}]<br>`+
+    `RMS(x) = ${rmsVal.toFixed(4)}<br>`+
+    `x/RMS = [${normed.map(v=>v.toFixed(3)).join(', ')}]<br>`+
+    `γ × x/RMS = [${scaled.map(v=>v.toFixed(3)).join(', ')}]`;
+}
+
+// ── 5. 分布图 ─────────────────────────────────────
+function gaussianPDF(x,mu,sigma){const d=x-mu;return Math.exp(-(d*d)/(2*sigma*sigma))/(sigma*Math.sqrt(2*Math.PI));}
+
+function drawDist(){
+  const cv=document.getElementById('cDist');
+  const W=cv.parentElement.clientWidth-40,H=220;
+  const ctx=setup(cv,W,H);
+  const {variance,meanShift,gamma}=getP();
+  const pL=50,pR=20,pT=20,pB=36,pW=W-pL-pR,pH=H-pT-pB;
+
+  const sigma=Math.sqrt(variance);
+  const xMin=-6,xMax=8;
+  const toX=v=>pL+(v-xMin)/(xMax-xMin)*pW;
+  const toY=v=>pT+pH*(1-v/0.7);
+
+  // 网格
+  ctx.strokeStyle='#E5E3DF';ctx.lineWidth=0.5;
+  [0,.2,.4,.6].forEach(v=>{ctx.beginPath();ctx.moveTo(pL,toY(v));ctx.lineTo(pL+pW,toY(v));ctx.stroke();});
+  ctx.strokeStyle='#9CA3AF';ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(pL,toY(0));ctx.lineTo(pL+pW,toY(0));ctx.stroke();
+
+  const xs=[];for(let x=xMin;x<=xMax;x+=0.05)xs.push(x);
+
+  // 输入分布（橙色）
+  function drawCurve(mu,sig,col,dash){
+    ctx.strokeStyle=col;ctx.lineWidth=2;ctx.setLineDash(dash||[]);ctx.lineCap='round';
+    ctx.beginPath();
+    xs.forEach((x,i)=>{
+      const y=gaussianPDF(x,mu,sig);
+      const px=toX(x),py=toY(y);
+      i===0?ctx.moveTo(px,py):ctx.lineTo(px,py);
+    });
+    ctx.stroke();ctx.setLineDash([]);ctx.lineCap='butt';
+  }
+
+  // 面积
+  function fillCurve(mu,sig,col){
+    const grad=ctx.createLinearGradient(0,pT,0,pT+pH);
+    grad.addColorStop(0,col+'44');grad.addColorStop(1,col+'05');
+    ctx.fillStyle=grad;ctx.beginPath();ctx.moveTo(pL,pT+pH);
+    xs.forEach(x=>{ctx.lineTo(toX(x),toY(gaussianPDF(x,mu,sig)));});
+    ctx.lineTo(pL+pW,pT+pH);ctx.closePath();ctx.fill();
+  }
+
+  // 输入分布
+  fillCurve(meanShift,sigma,'#C96A2A');
+  drawCurve(meanShift,sigma,'#C96A2A');
+
+  // RMSNorm 输出分布
+  // RMSNorm 后：x_out = x/rms * gamma，rms ≈ sqrt(mu²+sigma²)
+  const rmsApprox=Math.sqrt(meanShift*meanShift+variance);
+  const outMu=meanShift/rmsApprox*gamma;
+  const outSigma=sigma/rmsApprox*gamma;
+  fillCurve(outMu,outSigma,'#10B981');
+  drawCurve(outMu,outSigma,'#10B981');
+
+  // LayerNorm 输出（均值为0）
+  const lnSigma=1*gamma;
+  drawCurve(0,lnSigma,'#3B82F6',[5,3]);
+
+  // 均值竖线
+  [[meanShift,'#C96A2A','输入μ'],[outMu,'#10B981','RMS后μ'],[0,'#3B82F6','LN后μ=0']].forEach(([mu,col,lbl])=>{
+    ctx.strokeStyle=col+'88';ctx.lineWidth=1;ctx.setLineDash([2,2]);
+    ctx.beginPath();ctx.moveTo(toX(mu),pT);ctx.lineTo(toX(mu),pT+pH);ctx.stroke();ctx.setLineDash([]);
+    ctx.fillStyle=col;ctx.font='9px sans-serif';ctx.textAlign='center';
+    ctx.fillText(lbl,toX(mu),pT-3);
+  });
+
+  // 轴
+  ctx.fillStyle='#9CA3AF';ctx.font='10px monospace';ctx.textAlign='right';
+  [0,.2,.4,.6].forEach(v=>ctx.fillText(v.toFixed(1),pL-4,toY(v)+3));
+  ctx.textAlign='center';
+  [-4,-2,0,2,4,6].forEach(v=>{if(v>=xMin&&v<=xMax)ctx.fillText(v,toX(v),pT+pH+16);});
+  ctx.fillStyle='#9CA3AF';ctx.font='11px sans-serif';
+  ctx.save();ctx.translate(14,H/2);ctx.rotate(-Math.PI/2);ctx.textAlign='center';ctx.fillText('密度',0,0);ctx.restore();
+  ctx.textAlign='center';ctx.fillText('激活值',W/2,H);
+}
+
+// ── 6. 对比图 ─────────────────────────────────────
+function drawCompare(){
+  const cv=document.getElementById('cCompare');
+  const W=cv.parentElement.clientWidth-40,H=200;
+  const ctx=setup(cv,W,H);
+
+  // 左：操作步骤数量柱状图
+  const barData=[
+    {label:'LayerNorm',steps:5,color:'#3B82F6'},
+    {label:'RMSNorm', steps:3,color:'#0E7E3E'},
+  ];
+  const barMaxH=100,barW=60,offX=40,offY=30;
+  ctx.fillStyle='#9CA3AF';ctx.font='bold 11px sans-serif';ctx.textAlign='center';
+  ctx.fillText('归一化步骤数',offX+70,offY-8);
+
+  barData.forEach((b,i)=>{
+    const x=offX+i*90, bh=b.steps/5*barMaxH;
+    ctx.fillStyle=b.color+'22';ctx.fillRect(x,offY+barMaxH-bh,barW,bh);
+    ctx.strokeStyle=b.color;ctx.lineWidth=1.5;ctx.strokeRect(x,offY+barMaxH-bh,barW,bh);
+    ctx.fillStyle=b.color;ctx.font='bold 14px sans-serif';ctx.textAlign='center';
+    ctx.fillText(b.steps+'步',x+barW/2,offY+barMaxH-bh-6);
+    ctx.fillStyle='#374151';ctx.font='11px sans-serif';
+    ctx.fillText(b.label,x+barW/2,offY+barMaxH+16);
+  });
+
+  // 分割线
+  ctx.strokeStyle='#E2DFD9';ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(W/2,20);ctx.lineTo(W/2,H-20);ctx.stroke();
+
+  // 右：特性表格
+  const ox=W/2+16,oy=24;
+  ctx.fillStyle='#9CA3AF';ctx.font='bold 11px sans-serif';ctx.textAlign='left';
+  ctx.fillText('特性对比',ox,oy);
+  const props=[
+    ['均值为0','✓','✗'],
+    ['方差为1','✓','近似'],
+    ['参数数量','γ, β','γ'],
+    ['计算量','较高','较低'],
+    ['性能','强','相当'],
+  ];
+  props.forEach(([prop,ln,rms_],i)=>{
+    const y=oy+20+i*28;
+    ctx.fillStyle='#374151';ctx.font='11px sans-serif';ctx.textAlign='left';
+    ctx.fillText(prop,ox,y);
+    ctx.fillStyle='#3B82F6';ctx.textAlign='center';ctx.fillText(ln,ox+110,y);
+    ctx.fillStyle='#0E7E3E';ctx.textAlign='center';ctx.fillText(rms_,ox+160,y);
+    if(i<props.length-1){
+      ctx.strokeStyle='#E5E3DF';ctx.lineWidth=0.5;
+      ctx.beginPath();ctx.moveTo(ox,y+10);ctx.lineTo(W-20,y+10);ctx.stroke();
+    }
+  });
+  // 列标题
+  ctx.fillStyle='#3B82F6';ctx.font='bold 10px sans-serif';ctx.textAlign='center';
+  ctx.fillText('LN',ox+110,oy+8);
+  ctx.fillStyle='#0E7E3E';
+  ctx.fillText('RMSNorm',ox+160,oy+8);
+}
+
+function redraw(){
+  const {variance,meanShift,gamma}=getP();
+  document.getElementById('varianceVal').textContent=variance.toFixed(1);
+  document.getElementById('meanShiftVal').textContent=meanShift.toFixed(1);
+  document.getElementById('gammaVal').textContent=gamma.toFixed(1);
+  drawSteps();drawDist();drawCompare();
+}
+window.addEventListener('resize',redraw);
+redraw();
+</script>
+</body>
+</html>

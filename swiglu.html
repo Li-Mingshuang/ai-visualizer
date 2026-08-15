@@ -1,0 +1,496 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SwiGLU FFN 图解</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"
+  onload="renderMathInElement(document.body,{delimiters:[{left:'$$',right:'$$',display:true},{left:'$',right:'$',display:false}],throwOnError:false})"></script>
+<style>
+:root{
+  --bg:#FAFAF8;--bg2:#F4F2EF;--bg3:#ECEAE6;
+  --text:#1A1A1C;--text2:#3C3C40;--muted:#8A8A8F;
+  --border:#E2DFD9;--shadow:0 1px 3px rgba(0,0,0,0.05),0 4px 16px rgba(0,0,0,0.05);
+  --accent:#C96A2A;--accent-bg:#FEF0E6;
+  --blue:#1D5FBF;--blue-bg:#EBF2FF;
+  --green:#0E7E3E;--green-bg:#EDFAF3;
+  --red:#B91C1C;--red-bg:#FEF2F2;
+  --purple:#7C3AED;--purple-bg:#F5F3FF;
+  --r:10px;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+html{scroll-behavior:smooth;}
+body{background:var(--bg);color:var(--text);font-family:-apple-system,'Segoe UI',sans-serif;font-size:16px;line-height:1.8;}
+.layout{display:flex;min-height:100vh;}
+.sidebar{width:200px;flex-shrink:0;position:sticky;top:0;height:100vh;background:var(--bg2);border-right:1px solid var(--border);padding:20px 14px;display:flex;flex-direction:column;gap:0;overflow-y:auto;}
+.sidebar h1{font-size:.95rem;color:var(--accent);line-height:1.35;font-weight:800;}
+.sidebar p{font-size:10px;color:var(--muted);margin-top:2px;}
+.sep{border:none;border-top:1px solid var(--border);margin:14px 0;}
+.ctrl{margin-bottom:10px;}
+.ctrl-row-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:3px;}
+.ctrl-row-top label{font-size:10px;color:var(--muted);}
+.ctrl-val{font-size:12px;font-weight:700;color:var(--accent);font-family:monospace;}
+.ctrl input[type=range]{width:100%;accent-color:var(--accent);}
+.nav-sec{display:flex;flex-direction:column;gap:1px;}
+.nav-link{font-size:11px;color:var(--muted);text-decoration:none;padding:5px 8px;border-radius:5px;display:block;transition:all .12s;}
+.nav-link:hover{color:var(--text2);background:var(--bg3);}
+.main{flex:1;overflow-x:hidden;}
+.article{max-width:740px;margin:0 auto;padding:64px 24px 120px;}
+.hero{margin-bottom:52px;padding-bottom:40px;border-bottom:2px solid var(--border);}
+.eyebrow{font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--accent);margin-bottom:14px;}
+h1{font-size:2rem;font-weight:800;line-height:1.2;margin-bottom:16px;}
+.lead{font-size:17px;color:var(--text2);line-height:1.75;}
+section{margin-bottom:60px;}
+h2{font-size:1.25rem;font-weight:700;margin-bottom:14px;padding-bottom:8px;border-bottom:1px solid var(--border);}
+h3{font-size:1rem;font-weight:600;margin:22px 0 8px;}
+p{color:var(--text2);margin-bottom:16px;}
+.callout{border-left:3px solid var(--accent);background:var(--accent-bg);border-radius:0 8px 8px 0;padding:14px 18px;margin:20px 0;font-size:14px;color:var(--text2);}
+.callout.blue{border-color:var(--blue);background:var(--blue-bg);}
+.callout.green{border-color:var(--green);background:var(--green-bg);}
+.callout.purple{border-color:var(--purple);background:var(--purple-bg);}
+.math-block{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:18px 24px;margin:20px 0;overflow-x:auto;text-align:center;}
+.math-label{font-size:11px;color:var(--muted);text-align:right;margin-top:6px;font-family:monospace;}
+.viz{background:#fff;border:1px solid var(--border);border-radius:var(--r);box-shadow:var(--shadow);margin:24px -12px;overflow:hidden;}
+.viz-header{padding:11px 20px;background:var(--bg2);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;}
+.viz-dot{width:8px;height:8px;border-radius:50%;}
+.viz-title{font-size:12px;font-weight:600;color:var(--muted);letter-spacing:.04em;text-transform:uppercase;}
+.viz-body{padding:20px;}
+canvas{display:block;}
+.fig-cap{font-size:12px;color:var(--muted);text-align:center;margin-top:10px;line-height:1.5;}
+hr{border:none;border-top:1px solid var(--border);margin:52px 0;}
+.two-col{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin:20px 0;}
+.panel{background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:16px;}
+.panel-title{font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px;}
+</style>
+</head>
+<body>
+<div class="layout">
+<aside class="sidebar">
+  <div>
+    <h1>SwiGLU FFN</h1>
+    <p style="margin-top:4px">门控前馈网络图解</p>
+  </div>
+  <hr class="sep">
+  <div class="ctrl">
+    <div class="ctrl-row-top"><label>输入值 x</label><span class="ctrl-val" id="inputXVal">1.0</span></div>
+    <input type="range" id="inputX" min="-3" max="3" step="0.1" value="1.0" oninput="redraw()">
+  </div>
+  <div class="ctrl">
+    <div class="ctrl-row-top"><label>门控值（xW₂）</label><span class="ctrl-val" id="gateXVal">0.5</span></div>
+    <input type="range" id="gateX" min="-3" max="3" step="0.1" value="0.5" oninput="redraw()">
+  </div>
+  <hr class="sep">
+  <a href="#s1" class="nav-link">① 标准 FFN 回顾</a>
+  <a href="#s2" class="nav-link">② GLU：门控线性单元</a>
+  <a href="#s3" class="nav-link">③ Swish 激活函数</a>
+  <a href="#s4" class="nav-link">④ SwiGLU 完整结构</a>
+  <a href="#s5" class="nav-link">⑤ 门控机制可视化</a>
+  <a href="#s6" class="nav-link">⑥ 激活函数对比</a>
+</aside>
+<main class="main">
+<article class="article">
+
+<header class="hero">
+  <div class="eyebrow">Transformer · 前馈网络</div>
+  <h1>SwiGLU FFN<br>门控前馈网络</h1>
+  <p class="lead">SwiGLU 是 Transformer FFN 层的改进版——用 Swish 激活函数配合门控机制（GLU），让网络能动态地"选择性"传递特征。LLaMA、PaLM、GPT-4 等模型均使用 SwiGLU 替代原始的 ReLU FFN。</p>
+</header>
+
+<section id="s1">
+  <h2>1 &nbsp;标准 FFN 回顾</h2>
+  <p>原始 Transformer 的前馈层由两个线性变换和一个 ReLU 激活组成：</p>
+  <div class="math-block">
+    $$\text{FFN}(x) = \max(0,\; xW_1 + b_1) W_2 + b_2$$
+    <div class="math-label">先升维（×4），ReLU 激活，再降维（÷4）</div>
+  </div>
+  <p>ReLU 把负值直接截断为 0。问题是：这种硬截断丢弃了所有负数激活的信息，导致"神经元死亡"（负值区域梯度为 0，参数停止更新）。</p>
+
+  <div class="viz">
+    <div class="viz-header"><div class="viz-dot" style="background:var(--accent)"></div><span class="viz-title">图示 · 标准 FFN 结构</span></div>
+    <div class="viz-body"><canvas id="cFFN" height="140"></canvas>
+    <p class="fig-cap">蓝色 = 线性变换；橙色 = ReLU 激活（截断负值）。整条路径是单分支的。</p></div>
+  </div>
+</section>
+
+<hr>
+
+<section id="s2">
+  <h2>2 &nbsp;GLU：门控线性单元</h2>
+  <p>GLU（Gated Linear Unit）用两条并行的线性变换，其中一条经过 sigmoid 变成 0~1 的门控信号，与另一条做逐元素乘法：</p>
+  <div class="math-block">
+    $$\text{GLU}(x, W, V) = (xW) \odot \sigma(xV)$$
+    <div class="math-label">$\odot$ = 逐元素乘；$\sigma$ = sigmoid；门控信号决定哪些特征被"放行"</div>
+  </div>
+  <p>门控机制的直觉：$\sigma(xV)$ 是一个 0~1 之间的"开关"向量。当某个维度的门控值接近 1，对应的特征完整通过；接近 0，特征被抑制。模型能<strong>动态学习哪些信息对当前上下文有用</strong>。</p>
+
+  <div class="callout blue">
+    <strong>为什么叫"门控"：</strong>就像水闸控制流量，$\sigma(xV)$ 的每个维度独立控制对应特征维度的流通量。不同的输入 $x$ 会产生不同的门控信号，实现输入相关的自适应特征选择。
+  </div>
+</section>
+
+<hr>
+
+<section id="s3">
+  <h2>3 &nbsp;Swish 激活函数</h2>
+  <p>SwiGLU 用 Swish 替代 GLU 里的 sigmoid 门控。Swish 定义为：</p>
+  <div class="math-block">
+    $$\text{Swish}(x) = x \cdot \sigma(x) = \frac{x}{1 + e^{-x}}$$
+    <div class="math-label">自门控（self-gated）：用 x 自己的值来决定保留多少 x</div>
+  </div>
+  <p>Swish 相比 ReLU 的优势：在负值区域有小的非零输出（平滑过渡），梯度不会突然变 0；在正值区域近似线性，不压缩大的正值。</p>
+
+  <div class="viz">
+    <div class="viz-header"><div class="viz-dot" style="background:var(--purple)"></div><span class="viz-title">交互 · 激活函数形状</span></div>
+    <div class="viz-body"><canvas id="cAct" height="200"></canvas>
+    <p class="fig-cap">蓝 = ReLU；橙 = GELU；紫 = Swish（SiLU）。竖线 = 当前输入值 x。</p></div>
+  </div>
+</section>
+
+<hr>
+
+<section id="s4">
+  <h2>4 &nbsp;SwiGLU 完整结构</h2>
+  <p>把 Swish 代入 GLU，得到 SwiGLU：</p>
+  <div class="math-block">
+    $$\text{SwiGLU}(x, W_1, W_2, W_3) = \text{Swish}(xW_1) \odot (xW_2)$$
+    $$\text{FFN}_{\text{SwiGLU}}(x) = \text{SwiGLU}(x, W_1, W_2) \cdot W_3$$
+    <div class="math-label">三个权重矩阵 $W_1,W_2,W_3$；$W_1$ 生成门控分支，$W_2$ 生成内容分支，$W_3$ 降维</div>
+  </div>
+
+  <div class="viz">
+    <div class="viz-header"><div class="viz-dot" style="background:var(--accent)"></div><span class="viz-title">图示 · SwiGLU FFN 结构对比</span></div>
+    <div class="viz-body"><canvas id="cSwiGLU" height="220"></canvas>
+    <p class="fig-cap">上 = 标准 FFN（单分支，ReLU）；下 = SwiGLU（双分支，门控相乘）</p></div>
+  </div>
+
+  <div class="callout">
+    <strong>参数量变化：</strong>标准 FFN 有 2 个权重矩阵（$W_1, W_2$），SwiGLU 有 3 个（$W_1, W_2, W_3$）。为保持参数量相当，实际使用时隐藏层维度从 $4d$ 缩小到 $\frac{8}{3}d$（约 2.67d）。
+  </div>
+</section>
+
+<hr>
+
+<section id="s5">
+  <h2>5 &nbsp;门控机制可视化</h2>
+  <p>拖动侧边栏滑块，观察"内容分支"和"门控分支"如何共同决定最终输出。</p>
+
+  <div class="viz">
+    <div class="viz-header"><div class="viz-dot" style="background:var(--green)"></div><span class="viz-title">交互 · 门控相乘过程</span></div>
+    <div class="viz-body"><canvas id="cGate" height="240"></canvas>
+    <p class="fig-cap">上方 = 内容分支 $xW_2$（原始信息）；中间 = 门控分支 $\text{Swish}(xW_1)$（0~1的门）；下方 = 两者逐元素相乘后的输出</p></div>
+  </div>
+
+  <div class="callout green">
+    <strong>门控的作用：</strong>当门控值为 0，该维度的特征被完全抑制；当门控值为 1，特征完整通过。介于 0~1 之间时是软性保留。这让模型能根据输入上下文动态调整信息流，比固定的 ReLU 截断更灵活。
+  </div>
+</section>
+
+<hr>
+
+<section id="s6">
+  <h2>6 &nbsp;激活函数全面对比</h2>
+
+  <div class="viz">
+    <div class="viz-header"><div class="viz-dot" style="background:var(--blue)"></div><span class="viz-title">图示 · 各激活函数特性对比</span></div>
+    <div class="viz-body"><canvas id="cCmp" height="220"></canvas>
+    <p class="fig-cap">同时显示 ReLU、GELU、Swish 及其梯度。注意 Swish 在负区间有非零梯度，解决了 ReLU 的"死亡"问题。</p></div>
+  </div>
+
+  <div class="two-col">
+    <div class="panel">
+      <div class="panel-title">ReLU FFN</div>
+      <p style="font-size:14px;color:var(--text2)">• 负值直接截断为 0</p>
+      <p style="font-size:14px;color:var(--text2)">• 梯度在负区间为 0（神经元死亡风险）</p>
+      <p style="font-size:14px;color:var(--text2)">• 单分支，无门控</p>
+      <p style="font-size:13px;color:var(--muted);margin-top:6px">原始 Transformer, BERT, GPT-2</p>
+    </div>
+    <div class="panel">
+      <div class="panel-title">SwiGLU FFN</div>
+      <p style="font-size:14px;color:var(--text2)">• 负值有小的非零输出（平滑）</p>
+      <p style="font-size:14px;color:var(--text2)">• 梯度全程非零，训练更稳定</p>
+      <p style="font-size:14px;color:var(--text2)">• 双分支门控，自适应特征选择</p>
+      <p style="font-size:13px;color:var(--muted);margin-top:6px">LLaMA, PaLM, Mistral, Qwen</p>
+    </div>
+  </div>
+
+  <div class="callout purple">
+    <strong>为什么 SwiGLU 更好？</strong>实验表明 SwiGLU 在语言模型上始终优于 ReLU 和 GELU，PaLM 论文称之为"我们所尝试的激活函数中最好的"。理论上，门控机制增加了网络的表达能力，允许模型对不同的输入做非线性自适应处理，而不仅仅是固定的截断或平滑。
+  </div>
+</section>
+
+</article>
+</main>
+</div>
+
+<script>
+const DPR=window.devicePixelRatio||1;
+function setup(cv,W,H){
+  cv.width=Math.round(W*DPR);cv.height=Math.round(H*DPR);
+  cv.style.width=W+'px';cv.style.height=H+'px';
+  const ctx=cv.getContext('2d');ctx.scale(DPR,DPR);ctx.clearRect(0,0,W,H);
+  return ctx;
+}
+function sigmoid(x){return 1/(1+Math.exp(-x));}
+function swish(x){return x*sigmoid(x);}
+function relu(x){return Math.max(0,x);}
+function gelu(x){return 0.5*x*(1+Math.tanh(Math.sqrt(2/Math.PI)*(x+0.044715*x*x*x)));}
+
+function arrow(ctx,x1,y1,x2,y2,col,lbl){
+  ctx.strokeStyle=col;ctx.lineWidth=1.5;
+  ctx.beginPath();ctx.moveTo(x1,y1);ctx.lineTo(x2,y2);ctx.stroke();
+  const a=Math.atan2(y2-y1,x2-x1),hw=7;
+  ctx.fillStyle=col;ctx.beginPath();
+  ctx.moveTo(x2,y2);ctx.lineTo(x2-hw*Math.cos(a-.4),y2-hw*Math.sin(a-.4));
+  ctx.lineTo(x2-hw*Math.cos(a+.4),y2-hw*Math.sin(a+.4));ctx.closePath();ctx.fill();
+  if(lbl){ctx.fillStyle=col;ctx.font='10px sans-serif';ctx.textAlign='center';
+    ctx.fillText(lbl,(x1+x2)/2-6*Math.sin(a),(y1+y2)/2+6*Math.cos(a));}
+}
+function box(ctx,x,y,w,h,col,lbl,sub){
+  ctx.fillStyle='#fff';ctx.strokeStyle=col;ctx.lineWidth=1.5;
+  ctx.beginPath();ctx.roundRect?ctx.roundRect(x,y,w,h,6):ctx.rect(x,y,w,h);ctx.fill();ctx.stroke();
+  ctx.fillStyle=col;ctx.font='bold 11px sans-serif';ctx.textAlign='center';ctx.fillText(lbl,x+w/2,y+h/2+2);
+  if(sub){ctx.fillStyle='#9CA3AF';ctx.font='9px sans-serif';ctx.fillText(sub,x+w/2,y+h/2+13);}
+}
+
+// ── 1. 标准 FFN ───────────────────────────────────
+function drawFFN(){
+  const cv=document.getElementById('cFFN');
+  const W=cv.parentElement.clientWidth-40,H=140;
+  const ctx=setup(cv,W,H);
+  const cy=H/2,bw=70,bh=36;
+  const xs=[40,140,240,340,W-60];
+  // 输入
+  box(ctx,xs[0],cy-bh/2,bw,bh,'#9CA3AF','x','输入');
+  arrow(ctx,xs[0]+bw,cy,xs[1],cy,'#9CA3AF','');
+  box(ctx,xs[1],cy-bh/2,bw,bh,'#1D5FBF','W₁','升维 ×4');
+  arrow(ctx,xs[1]+bw,cy,xs[2],cy,'#C96A2A','');
+  box(ctx,xs[2],cy-bh/2,bw,bh,'#C96A2A','ReLU','激活');
+  arrow(ctx,xs[2]+bw,cy,xs[3],cy,'#1D5FBF','');
+  box(ctx,xs[3],cy-bh/2,bw,bh,'#1D5FBF','W₂','降维 ÷4');
+  arrow(ctx,xs[3]+bw,cy,xs[4],cy,'#9CA3AF','');
+  box(ctx,xs[4],cy-bh/2,bw,bh,'#9CA3AF','输出','');
+}
+
+// ── 3. 激活函数 ───────────────────────────────────
+function drawAct(){
+  const cv=document.getElementById('cAct');
+  const W=cv.parentElement.clientWidth-40,H=200;
+  const ctx=setup(cv,W,H);
+  const pL=50,pR=20,pT=20,pB=30,pW=W-pL-pR,pH=H-pT-pB;
+  const xMin=-4,xMax=4,vMin=-0.5,vMax=3;
+  const tx=x=>pL+(x-xMin)/(xMax-xMin)*pW;
+  const ty=v=>pT+pH*(1-(v-vMin)/(vMax-vMin));
+  const xv=+document.getElementById('inputX').value;
+
+  // 网格
+  ctx.strokeStyle='#E5E3DF';ctx.lineWidth=0.5;
+  [0,1,2].forEach(v=>{ctx.beginPath();ctx.moveTo(pL,ty(v));ctx.lineTo(pL+pW,ty(v));ctx.stroke();});
+  ctx.strokeStyle='#9CA3AF';ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(pL,ty(0));ctx.lineTo(pL+pW,ty(0));ctx.stroke();
+  ctx.beginPath();ctx.moveTo(tx(0),pT);ctx.lineTo(tx(0),pT+pH);ctx.stroke();
+
+  const xs=[];for(let x=xMin;x<=xMax;x+=0.05)xs.push(x);
+
+  [[relu,'#1D5FBF','ReLU'],[gelu,'#C96A2A','GELU'],[swish,'#7C3AED','Swish']].forEach(([fn,col,lbl])=>{
+    ctx.strokeStyle=col;ctx.lineWidth=2;ctx.lineCap='round';
+    ctx.beginPath();
+    xs.forEach((x,i)=>{
+      const y=ty(fn(x));
+      i===0?ctx.moveTo(tx(x),y):ctx.lineTo(tx(x),y);
+    });
+    ctx.stroke();ctx.lineCap='butt';
+    // 当前值点
+    const fy=fn(xv);
+    ctx.fillStyle=col;ctx.beginPath();ctx.arc(tx(xv),ty(fy),5,0,Math.PI*2);ctx.fill();
+    ctx.strokeStyle='#fff';ctx.lineWidth=1.5;ctx.beginPath();ctx.arc(tx(xv),ty(fy),5,0,Math.PI*2);ctx.stroke();
+  });
+
+  // 当前 x 线
+  ctx.strokeStyle='#374151';ctx.lineWidth=1;ctx.setLineDash([3,2]);
+  ctx.beginPath();ctx.moveTo(tx(xv),pT);ctx.lineTo(tx(xv),pT+pH);ctx.stroke();ctx.setLineDash([]);
+  ctx.fillStyle='#374151';ctx.font='10px monospace';ctx.textAlign='center';
+  ctx.fillText(`x = ${xv.toFixed(1)}`,tx(xv),pT-4);
+
+  // 轴
+  ctx.fillStyle='#9CA3AF';ctx.font='10px monospace';ctx.textAlign='right';
+  [0,1,2].forEach(v=>ctx.fillText(v,pL-4,ty(v)+3));
+  ctx.textAlign='center';
+  [-4,-2,0,2,4].forEach(x=>ctx.fillText(x,tx(x),pT+pH+16));
+
+  // 图例
+  [[swish,'#7C3AED','Swish(x)=x·σ(x)'],[relu,'#1D5FBF','ReLU'],[gelu,'#C96A2A','GELU']].forEach(([fn,col,lbl],i)=>{
+    ctx.strokeStyle=col;ctx.lineWidth=2;
+    ctx.beginPath();ctx.moveTo(pL+i*140,pT-2);ctx.lineTo(pL+i*140+20,pT-2);ctx.stroke();
+    ctx.fillStyle=col;ctx.font='10px sans-serif';ctx.textAlign='left';ctx.fillText(lbl,pL+i*140+24,pT+2);
+  });
+}
+
+// ── 4. SwiGLU 结构对比 ────────────────────────────
+function drawSwiGLU(){
+  const cv=document.getElementById('cSwiGLU');
+  const W=cv.parentElement.clientWidth-40,H=220;
+  const ctx=setup(cv,W,H);
+  const bw=62,bh=30;
+
+  // 标准 FFN（上）
+  ctx.fillStyle='#9CA3AF';ctx.font='bold 10px sans-serif';ctx.textAlign='left';
+  ctx.fillText('标准 FFN',8,22);
+  const y1=30,xs1=[30,110,185,260,W-60];
+  box(ctx,xs1[0],y1,bw,bh,'#9CA3AF','x','');
+  arrow(ctx,xs1[0]+bw,y1+bh/2,xs1[1],y1+bh/2,'#9CA3AF','');
+  box(ctx,xs1[1],y1,bw,bh,'#1D5FBF','xW₁','线性');
+  arrow(ctx,xs1[1]+bw,y1+bh/2,xs1[2],y1+bh/2,'#C96A2A','');
+  box(ctx,xs1[2],y1,bw,bh,'#C96A2A','ReLU','激活');
+  arrow(ctx,xs1[2]+bw,y1+bh/2,xs1[3],y1+bh/2,'#1D5FBF','');
+  box(ctx,xs1[3],y1,bw,bh,'#1D5FBF','W₂','降维');
+  arrow(ctx,xs1[3]+bw,y1+bh/2,xs1[4],y1+bh/2,'#9CA3AF','');
+  box(ctx,xs1[4],y1,bw,bh,'#9CA3AF','输出','');
+
+  // SwiGLU（下，双分支）
+  ctx.fillStyle='#9CA3AF';ctx.font='bold 10px sans-serif';ctx.textAlign='left';
+  ctx.fillText('SwiGLU FFN',8,120);
+  const y2a=125,y2b=165,ymid=(y2a+y2b+bh)/2;
+  // 输入
+  box(ctx,xs1[0],ymid-bh/2,bw,bh,'#9CA3AF','x','');
+  // 分叉
+  arrow(ctx,xs1[0]+bw,ymid,xs1[1]-5,y2a+bh/2,'#9CA3AF','');
+  arrow(ctx,xs1[0]+bw,ymid,xs1[1]-5,y2b+bh/2,'#9CA3AF','');
+  // 上分支：Swish(xW1)
+  box(ctx,xs1[1],y2a,bw,bh,'#7C3AED','xW₁','门控');
+  arrow(ctx,xs1[1]+bw,y2a+bh/2,xs1[2],y2a+bh/2,'#7C3AED','');
+  box(ctx,xs1[2],y2a,bw,bh,'#7C3AED','Swish','激活');
+  // 下分支：xW2
+  box(ctx,xs1[1],y2b,bw,bh,'#0E7E3E','xW₂','内容');
+  // 合并 ⊙
+  const mx=xs1[2]+bw+10,my=(y2a+y2b+bh)/2;
+  ctx.fillStyle='#C96A2A';ctx.strokeStyle='#C96A2A';ctx.lineWidth=1.5;
+  ctx.beginPath();ctx.arc(mx,my,14,0,Math.PI*2);ctx.stroke();
+  ctx.fillStyle='#C96A2A';ctx.font='bold 16px sans-serif';ctx.textAlign='center';ctx.fillText('⊙',mx,my+6);
+  arrow(ctx,xs1[2]+bw,y2a+bh/2,mx-14,my,'#7C3AED','');
+  arrow(ctx,xs1[1]+bw,y2b+bh/2,mx-14,my,'#0E7E3E','');
+  // 输出
+  arrow(ctx,mx+14,my,xs1[3],ymid,'#C96A2A','');
+  box(ctx,xs1[3],ymid-bh/2,bw,bh,'#1D5FBF','W₃','降维');
+  arrow(ctx,xs1[3]+bw,ymid,xs1[4],ymid,'#9CA3AF','');
+  box(ctx,xs1[4],ymid-bh/2,bw,bh,'#9CA3AF','输出','');
+
+  ctx.fillStyle='#C96A2A';ctx.font='9px sans-serif';ctx.textAlign='center';
+  ctx.fillText('⊙逐元素乘',mx,my+22);
+}
+
+// ── 5. 门控可视化 ─────────────────────────────────
+function drawGate(){
+  const cv=document.getElementById('cGate');
+  const W=cv.parentElement.clientWidth-40,H=240;
+  const ctx=setup(cv,W,H);
+  const xv=+document.getElementById('inputX').value;
+  const gv=+document.getElementById('gateX').value;
+
+  const d=8; // 特征维度数
+  const cellW=Math.min((W-40)/d,40), cellH=32, offX=(W-d*cellW)/2;
+
+  // 生成特征值（模拟）
+  const content=Array.from({length:d},(_,i)=>xv*Math.sin(i*0.8+1)*1.5);
+  const gate_raw=Array.from({length:d},(_,i)=>gv*Math.cos(i*0.6+0.5)*1.5);
+  const gate=gate_raw.map(v=>swish(v));
+  const output=content.map((v,i)=>v*gate[i]);
+  const maxAbs=Math.max(...[...content,...gate,...output].map(Math.abs),0.01);
+
+  function drawRow(label,vals,col,y){
+    ctx.fillStyle=col;ctx.font='bold 10px sans-serif';ctx.textAlign='right';
+    ctx.fillText(label,offX-6,y+cellH/2+4);
+    vals.forEach((v,i)=>{
+      const norm=v/maxAbs;
+      const r=norm>0?Math.round(255-norm*160):255;
+      const g=norm>0?Math.round(255-norm*80):Math.round(255+norm*80);
+      const b=norm>0?Math.round(255-norm*220):Math.round(255-Math.abs(norm)*100);
+      ctx.fillStyle=`rgb(${r},${g},${b})`;
+      ctx.beginPath();ctx.roundRect?ctx.roundRect(offX+i*cellW+2,y+2,cellW-4,cellH-4,4):ctx.rect(offX+i*cellW+2,y+2,cellW-4,cellH-4);ctx.fill();
+      ctx.strokeStyle=col+'55';ctx.lineWidth=1;
+      ctx.beginPath();ctx.roundRect?ctx.roundRect(offX+i*cellW+2,y+2,cellW-4,cellH-4,4):ctx.rect(offX+i*cellW+2,y+2,cellW-4,cellH-4);ctx.stroke();
+      ctx.fillStyle=Math.abs(norm)>0.5?'#fff':col;
+      ctx.font='bold 9px monospace';ctx.textAlign='center';
+      ctx.fillText(v.toFixed(1),offX+i*cellW+cellW/2,y+cellH/2+4);
+    });
+  }
+
+  drawRow('内容 xW₂',content,'#0E7E3E',20);
+  // 乘号
+  ctx.fillStyle='#C96A2A';ctx.font='bold 18px sans-serif';ctx.textAlign='center';
+  ctx.fillText('⊙',offX-6,90);
+  drawRow('门控 Swish(xW₁)',gate,'#7C3AED',66);
+  // 等号
+  ctx.fillStyle='#374151';ctx.font='bold 18px sans-serif';ctx.textAlign='center';
+  ctx.fillText('=',offX-6,142);
+  drawRow('输出',output,'#C96A2A',116);
+
+  // 当前值说明
+  ctx.fillStyle='#374151';ctx.font='11px sans-serif';ctx.textAlign='center';
+  ctx.fillText(`xW₂ 代表值 ${xv.toFixed(1)}  |  Swish(xW₁) 代表值 ${swish(gv).toFixed(3)}  |  输出 = ${(xv*swish(gv)).toFixed(3)}`,W/2,H-8);
+}
+
+// ── 6. 激活函数 + 梯度对比 ────────────────────────
+function drawCmp(){
+  const cv=document.getElementById('cCmp');
+  const W=cv.parentElement.clientWidth-40,H=220;
+  const ctx=setup(cv,W,H);
+  const pL=50,pR=20,pT=20,pB=36,pW=W-pL-pR,pH=H-pT-pB;
+  const xMin=-4,xMax=4,vMin=-0.6,vMax=2.5;
+  const tx=x=>pL+(x-xMin)/(xMax-xMin)*pW;
+  const ty=v=>pT+pH*(1-(v-vMin)/(vMax-vMin));
+
+  ctx.strokeStyle='#E5E3DF';ctx.lineWidth=0.5;
+  [-0.5,0,0.5,1,1.5,2].forEach(v=>{ctx.beginPath();ctx.moveTo(pL,ty(v));ctx.lineTo(pL+pW,ty(v));ctx.stroke();});
+  ctx.strokeStyle='#9CA3AF';ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(pL,ty(0));ctx.lineTo(pL+pW,ty(0));ctx.stroke();
+  ctx.beginPath();ctx.moveTo(tx(0),pT);ctx.lineTo(tx(0),pT+pH);ctx.stroke();
+
+  const xs=[];for(let x=xMin;x<=xMax;x+=0.05)xs.push(x);
+  const eps=0.001;
+  function grad(fn,x){return(fn(x+eps)-fn(x-eps))/(2*eps);}
+
+  // 激活值（实线）
+  [[relu,'#1D5FBF'],[gelu,'#C96A2A'],[swish,'#7C3AED']].forEach(([fn,col])=>{
+    ctx.strokeStyle=col;ctx.lineWidth=2;ctx.lineCap='round';
+    ctx.beginPath();xs.forEach((x,i)=>{const y=ty(fn(x));i===0?ctx.moveTo(tx(x),y):ctx.lineTo(tx(x),y);});ctx.stroke();ctx.lineCap='butt';
+  });
+  // 梯度（虚线）
+  [[relu,'#1D5FBF'],[gelu,'#C96A2A'],[swish,'#7C3AED']].forEach(([fn,col])=>{
+    ctx.strokeStyle=col+'88';ctx.lineWidth=1.2;ctx.setLineDash([4,3]);ctx.lineCap='round';
+    ctx.beginPath();xs.forEach((x,i)=>{const y=ty(grad(fn,x));i===0?ctx.moveTo(tx(x),y):ctx.lineTo(tx(x),y);});ctx.stroke();ctx.setLineDash([]);ctx.lineCap='butt';
+  });
+
+  // 轴标签
+  ctx.fillStyle='#9CA3AF';ctx.font='10px monospace';ctx.textAlign='right';
+  [-0.5,0,0.5,1,1.5].forEach(v=>ctx.fillText(v.toFixed(1),pL-4,ty(v)+3));
+  ctx.textAlign='center';
+  [-4,-2,0,2,4].forEach(x=>ctx.fillText(x,tx(x),pT+pH+16));
+  ctx.fillStyle='#9CA3AF';ctx.font='11px sans-serif';
+  ctx.save();ctx.translate(14,H/2);ctx.rotate(-Math.PI/2);ctx.textAlign='center';ctx.fillText('值 / 梯度',0,0);ctx.restore();
+  ctx.textAlign='center';ctx.fillText('输入 x',W/2,H);
+
+  // 图例
+  [['#1D5FBF','ReLU'],['#C96A2A','GELU'],['#7C3AED','Swish']].forEach(([col,lbl],i)=>{
+    ctx.strokeStyle=col;ctx.lineWidth=2;
+    ctx.beginPath();ctx.moveTo(pL+i*120,pT-4);ctx.lineTo(pL+i*120+18,pT-4);ctx.stroke();
+    ctx.fillStyle=col;ctx.font='10px sans-serif';ctx.textAlign='left';ctx.fillText(lbl,pL+i*120+22,pT);
+  });
+  ctx.strokeStyle='#9CA3AF';ctx.lineWidth=1;ctx.setLineDash([4,3]);
+  ctx.beginPath();ctx.moveTo(pL+360,pT-4);ctx.lineTo(pL+378,pT-4);ctx.stroke();ctx.setLineDash([]);
+  ctx.fillStyle='#9CA3AF';ctx.font='10px sans-serif';ctx.textAlign='left';ctx.fillText('梯度（虚线）',pL+382,pT);
+}
+
+function redraw(){
+  const xv=+document.getElementById('inputX').value;
+  const gv=+document.getElementById('gateX').value;
+  document.getElementById('inputXVal').textContent=xv.toFixed(1);
+  document.getElementById('gateXVal').textContent=gv.toFixed(1);
+  drawFFN();drawAct();drawSwiGLU();drawGate();drawCmp();
+}
+window.addEventListener('resize',redraw);
+redraw();
+</script>
+</body>
+</html>

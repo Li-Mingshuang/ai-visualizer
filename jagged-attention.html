@@ -1,0 +1,876 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Jagged Full Attention 图解</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"
+  onload="renderMathInElement(document.body,{delimiters:[{left:'$$',right:'$$',display:true},{left:'$',right:'$',display:false}],throwOnError:false})"></script>
+<style>
+:root{
+  --bg:#FAFAF8; --bg2:#F4F2EF; --bg3:#ECEAE6;
+  --text:#1A1A1C; --text2:#3C3C40; --muted:#8A8A8F;
+  --border:#E2DFD9; --shadow:0 1px 3px rgba(0,0,0,0.05),0 4px 16px rgba(0,0,0,0.05);
+  --accent:#C96A2A; --accent-bg:#FEF0E6;
+  --blue:#1D5FBF; --blue-bg:#EBF2FF;
+  --green:#0E7E3E; --green-bg:#EDFAF3;
+  --red:#B91C1C; --red-bg:#FEF2F2;
+  --purple:#6D28D9; --purple-bg:#F5F3FF;
+  --r:10px;
+  --seq1:#3B82F6; --seq2:#10B981; --seq3:#F59E0B; --seq4:#EF4444;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+html{scroll-behavior:smooth;}
+body{background:var(--bg);color:var(--text);font-family:-apple-system,'Segoe UI',sans-serif;font-size:16px;line-height:1.8;}
+.layout{display:flex;min-height:100vh;}
+.sidebar{width:210px;flex-shrink:0;position:sticky;top:0;height:100vh;background:var(--bg2);border-right:1px solid var(--border);padding:24px 16px;display:flex;flex-direction:column;gap:16px;overflow-y:auto;}
+.sidebar h1{font-size:1rem;color:var(--accent);line-height:1.35;font-weight:800;}
+.sidebar p{font-size:11px;color:var(--muted);}
+.sidebar-sep{border:none;border-top:1px solid var(--border);}
+.sidebar .ctrl{display:flex;flex-direction:column;gap:4px;}
+.sidebar .ctrl label{font-size:11px;color:var(--muted);}
+.sidebar .ctrl input[type=range]{width:100%;accent-color:var(--accent);}
+.sidebar .ctrl-val{font-size:13px;font-weight:700;color:var(--accent);font-family:monospace;}
+.sidebar .swatch{width:10px;height:10px;border-radius:2px;display:inline-block;margin-right:4px;vertical-align:middle;}
+.sidebar .leg{font-size:11px;color:var(--muted);margin-bottom:4px;}
+.main{flex:1;overflow-x:hidden;}
+.article{max-width:740px;margin:0 auto;padding:64px 24px 120px;}
+.hero{margin-bottom:52px;padding-bottom:40px;border-bottom:2px solid var(--border);}
+.eyebrow{font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--accent);margin-bottom:14px;}
+h1{font-size:2rem;font-weight:800;line-height:1.2;margin-bottom:16px;letter-spacing:-.01em;}
+.lead{font-size:17px;color:var(--text2);line-height:1.75;}
+section{margin-bottom:60px;}
+h2{font-size:1.25rem;font-weight:700;margin-bottom:14px;padding-bottom:8px;border-bottom:1px solid var(--border);}
+h3{font-size:1rem;font-weight:600;color:var(--text);margin:22px 0 8px;}
+p{color:var(--text2);margin-bottom:16px;}
+.callout{border-left:3px solid var(--accent);background:var(--accent-bg);border-radius:0 8px 8px 0;padding:14px 18px;margin:20px 0;font-size:14px;color:var(--text2);}
+.callout.blue{border-color:var(--blue);background:var(--blue-bg);}
+.callout.green{border-color:var(--green);background:var(--green-bg);}
+.callout.red{border-color:var(--red);background:var(--red-bg);}
+.math-block{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:18px 24px;margin:20px 0;overflow-x:auto;text-align:center;}
+.math-label{font-size:11px;color:var(--muted);text-align:right;margin-top:6px;font-family:monospace;}
+.viz{background:#fff;border:1px solid var(--border);border-radius:var(--r);box-shadow:var(--shadow);margin:24px -12px;overflow:hidden;}
+.viz-header{padding:11px 20px;background:var(--bg2);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;}
+.viz-dot{width:8px;height:8px;border-radius:50%;}
+.viz-title{font-size:12px;font-weight:600;color:var(--muted);letter-spacing:.04em;text-transform:uppercase;}
+.viz-body{padding:20px;}
+canvas{display:block;}
+.fig-cap{font-size:12px;color:var(--muted);text-align:center;margin-top:10px;line-height:1.5;}
+.ctrl-row{display:flex;gap:20px;flex-wrap:wrap;margin-top:14px;padding-top:14px;border-top:1px solid var(--border);}
+.ctrl{display:flex;align-items:center;gap:8px;font-size:13px;}
+.ctrl label{color:var(--muted);white-space:nowrap;}
+.ctrl input[type=range]{width:80px;accent-color:var(--accent);}
+.ctrl-val{color:var(--accent);font-weight:700;font-family:monospace;min-width:20px;}
+.tok{display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:4px;font-size:11px;font-weight:700;color:#fff;margin:2px;}
+.seq-label{font-size:11px;font-weight:600;margin-right:6px;color:var(--muted);}
+.seq-row{display:flex;align-items:center;margin-bottom:8px;}
+hr{border:none;border-top:1px solid var(--border);margin:52px 0;}
+.two-col{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin:20px 0;}
+.panel{background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:14px;}
+.panel-title{font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px;}
+.efficiency-bar{height:24px;border-radius:4px;margin:6px 0;display:flex;align-items:center;padding:0 8px;font-size:12px;font-weight:600;color:#fff;transition:width .3s;}
+.tag{display:inline-block;padding:2px 8px;border-radius:12px;font-size:11px;font-weight:600;}
+.tag-red{background:var(--red-bg);color:var(--red);}
+.tag-green{background:var(--green-bg);color:var(--green);}
+</style>
+</head>
+<body>
+<div class="layout">
+<aside class="sidebar">
+  <div>
+    <h1>Jagged Full Attention</h1>
+    <p style="margin-top:4px">不规则全注意力图解</p>
+  </div>
+  <hr class="sidebar-sep">
+  <div class="ctrl">
+    <label>序列 1 长度</label>
+    <input type="range" id="l1" min="2" max="10" value="4" oninput="redraw()">
+    <span class="ctrl-val"><span class="swatch" style="background:var(--seq1)"></span><span id="v1">4</span></span>
+  </div>
+  <div class="ctrl">
+    <label>序列 2 长度</label>
+    <input type="range" id="l2" min="2" max="10" value="7" oninput="redraw()">
+    <span class="ctrl-val"><span class="swatch" style="background:var(--seq2)"></span><span id="v2">7</span></span>
+  </div>
+  <div class="ctrl">
+    <label>序列 3 长度</label>
+    <input type="range" id="l3" min="2" max="10" value="3" oninput="redraw()">
+    <span class="ctrl-val"><span class="swatch" style="background:var(--seq3)"></span><span id="v3">3</span></span>
+  </div>
+  <div class="ctrl">
+    <label>序列 4 长度</label>
+    <input type="range" id="l4" min="2" max="10" value="9" oninput="redraw()">
+    <span class="ctrl-val"><span class="swatch" style="background:var(--seq4)"></span><span id="v4">9</span></span>
+  </div>
+  <hr class="sidebar-sep">
+  <div>
+    <div class="leg"><span class="swatch" style="background:var(--seq1)"></span>序列 1</div>
+    <div class="leg"><span class="swatch" style="background:var(--seq2)"></span>序列 2</div>
+    <div class="leg"><span class="swatch" style="background:var(--seq3)"></span>序列 3</div>
+    <div class="leg"><span class="swatch" style="background:var(--seq4)"></span>序列 4</div>
+    <div class="leg" style="margin-top:6px"><span class="swatch" style="background:#E5E7EB;border:1px solid #D1D5DB"></span>Padding</div>
+  </div>
+  <hr class="sidebar-sep">
+  <div style="display:flex;flex-direction:column;gap:4px;">
+    <a href="#s1" style="font-size:11px;color:var(--muted);text-decoration:none;padding:3px 0;">① Padding 浪费</a>
+    <a href="#s2" style="font-size:11px;color:var(--muted);text-decoration:none;padding:3px 0;">② 序列打包</a>
+    <a href="#s3" style="font-size:11px;color:var(--muted);text-decoration:none;padding:3px 0;">③ 注意力掩码</a>
+    <a href="#s4" style="font-size:11px;color:var(--muted);text-decoration:none;padding:3px 0;">④ 因果 vs 非因果</a>
+    <a href="#s5" style="font-size:11px;color:var(--muted);text-decoration:none;padding:3px 0;">⑤ 计算效率</a>
+    <a href="#s6" style="font-size:11px;color:var(--muted);text-decoration:none;padding:3px 0;">⑥ cu_seqlens</a>
+    <a href="#s7" style="font-size:11px;color:var(--accent);text-decoration:none;padding:3px 0;font-weight:600;">⑦ CUDA Kernel 原理</a>
+  </div>
+</aside>
+<main class="main">
+<article class="article">
+
+<header class="hero">
+  <div class="eyebrow">Transformer 注意力机制</div>
+  <h1>Jagged Full Attention<br>不规则全注意力</h1>
+  <p class="lead">当一个 batch 里有不同长度的序列时，传统 padding 方案浪费大量计算。Jagged Attention 把序列紧凑打包，让注意力只在每条序列内部计算，消除无效计算。</p>
+</header>
+
+<!-- 1. 问题背景 -->
+<section id="s1">
+  <h2>1 &nbsp;问题：变长序列的 Padding 浪费</h2>
+  <p>Transformer 的注意力计算要求同一个 batch 里的序列等长。最简单的做法是对短序列补 padding token，使所有序列和最长的那条一样长。</p>
+  <p>但 padding token 是无意义的——它们不携带信息，却占用了大量计算资源。当序列长度差异很大时，浪费尤为严重。</p>
+
+  <div class="viz">
+    <div class="viz-header"><div class="viz-dot" style="background:var(--red)"></div><span class="viz-title">问题可视化 · Padding 浪费</span></div>
+    <div class="viz-body">
+      <canvas id="cPad" height="180"></canvas>
+      <p class="fig-cap">灰色格子 = Padding token（无意义计算）；彩色格子 = 真实 token。<br>序列长度差异越大，浪费越严重。</p>
+      <div style="display:flex;gap:20px;margin-top:12px;font-size:13px;">
+        <span>有效 token：<strong id="effTok" style="color:var(--green)">—</strong></span>
+        <span>Padding token：<strong id="padTok" style="color:var(--red)">—</strong></span>
+        <span>计算浪费：<strong id="wasteRate" style="color:var(--accent)">—</strong></span>
+      </div>
+    </div>
+  </div>
+
+  <div class="callout red">
+    <strong>极端情况：</strong>如果 batch 里有一条长序列（1000 token）和三条短序列（10 token），padding 后有效计算只占 25%，75% 都浪费在 padding 上。
+  </div>
+</section>
+
+<hr>
+
+<!-- 2. Jagged 解法 -->
+<section id="s2">
+  <h2>2 &nbsp;解法：序列打包（Packing）</h2>
+  <p>Jagged Full Attention 的核心思路是：<strong>把所有序列首尾相接地拼在一起</strong>，形成一条长序列，但在计算注意力时，每个 token 只能看到同一原始序列内的 token。</p>
+  <p>拼接后的序列长度 = 所有原始序列的长度之和，没有任何 padding，计算利用率达到 100%。</p>
+
+  <div class="viz">
+    <div class="viz-header"><div class="viz-dot" style="background:var(--green)"></div><span class="viz-title">对比 · Padding vs Packing</span></div>
+    <div class="viz-body">
+      <canvas id="cPack" height="240"></canvas>
+      <p class="fig-cap">上方 = Padding 方案（补齐到最大长度）；下方 = Packing 方案（紧凑拼接）。相同颜色 = 同一原始序列。</p>
+    </div>
+  </div>
+
+  <p>关键问题是：打包后如何让每个 token 只关注自己所在序列的 token？答案是通过<strong>不规则注意力掩码（Jagged Mask）</strong>。</p>
+</section>
+
+<hr>
+
+<!-- 3. 注意力掩码 -->
+<section id="s3">
+  <h2>3 &nbsp;核心：不规则注意力掩码</h2>
+  <p>注意力掩码决定了哪些位置对可以互相 attend。在打包后的序列上，合法的 attend 关系只存在于同一原始序列内部——这形成了<strong>块对角（Block Diagonal）</strong>结构。</p>
+  <p>不同于正方形的完整矩阵，各块大小不同，边界参差不齐，这就是 "Jagged"（锯齿状）名称的来源。</p>
+
+  <div class="viz">
+    <div class="viz-header"><div class="viz-dot" style="background:var(--blue)"></div><span class="viz-title">交互 · 注意力掩码形状</span></div>
+    <div class="viz-body">
+      <div style="display:flex;gap:16px;flex-wrap:wrap;">
+        <div style="flex:1;min-width:200px;">
+          <div class="panel-title" style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:8px">Padding 方案</div>
+          <canvas id="cMaskPad" height="200"></canvas>
+          <p class="fig-cap">每个序列看到补齐后的完整行，包括 padding 位置（深灰 = 被 mask 的 padding）</p>
+        </div>
+        <div style="flex:1;min-width:200px;">
+          <div class="panel-title" style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:8px">Jagged 方案</div>
+          <canvas id="cMaskJag" height="200"></canvas>
+          <p class="fig-cap">块对角结构，每个序列只看自己的 token，无 padding 浪费，边界呈锯齿状</p>
+        </div>
+      </div>
+      <div id="maskTooltip" style="margin-top:12px;font-size:13px;min-height:20px;padding:6px 10px;border-radius:6px;background:var(--bg2);color:var(--muted);">悬停格子查看 attend 关系</div>
+    </div>
+  </div>
+
+  <p>这种掩码结构决定了注意力矩阵 $\mathbf{A}$ 是块对角的：</p>
+  <div class="math-block">
+    $$\mathbf{A} = \begin{pmatrix} \mathbf{A}_1 & \mathbf{0} & \mathbf{0} \\ \mathbf{0} & \mathbf{A}_2 & \mathbf{0} \\ \mathbf{0} & \mathbf{0} & \mathbf{A}_3 \end{pmatrix}$$
+    <div class="math-label">$\mathbf{A}_i$ = 第 $i$ 条序列内部的注意力矩阵；块外全为 0（不 attend）</div>
+  </div>
+</section>
+
+<hr>
+
+<!-- 4. 因果 vs 非因果 -->
+<section id="s4">
+  <h2>4 &nbsp;因果 vs 非因果 Jagged</h2>
+  <p>根据任务类型，每个对角块内部可以是全注意力或因果注意力：</p>
+
+  <div class="two-col">
+    <div class="panel">
+      <div class="panel-title">非因果（双向）</div>
+      <p style="font-size:14px;color:var(--text2)">用于 BERT 类编码器。每条序列内，每个 token 可以看到序列中所有其他 token（包括后面的）。每个块是一个<strong>完整正方形</strong>。</p>
+      <p style="font-size:13px;color:var(--muted)">场景：文本分类、句子嵌入</p>
+    </div>
+    <div class="panel">
+      <div class="panel-title">因果（单向）</div>
+      <p style="font-size:14px;color:var(--text2)">用于 GPT 类解码器。每个 token 只能看到序列中它之前的 token。每个块是一个<strong>下三角形</strong>。</p>
+      <p style="font-size:13px;color:var(--muted)">场景：语言模型预训练、文本生成</p>
+    </div>
+  </div>
+
+  <div class="viz">
+    <div class="viz-header"><div class="viz-dot" style="background:var(--purple)"></div><span class="viz-title">对比 · 非因果 vs 因果 Jagged 掩码</span></div>
+    <div class="viz-body">
+      <div style="display:flex;gap:16px;flex-wrap:wrap;">
+        <div style="flex:1;min-width:180px;">
+          <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:8px">非因果（Bidirectional）</div>
+          <canvas id="cBidir" height="200"></canvas>
+          <p class="fig-cap">块内全填充，序列内每个 token 互相可见</p>
+        </div>
+        <div style="flex:1;min-width:180px;">
+          <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:8px">因果（Causal）</div>
+          <canvas id="cCausal" height="200"></canvas>
+          <p class="fig-cap">块内下三角，只能看到过去的 token</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<hr>
+
+<!-- 5. 计算效率 -->
+<section id="s5">
+  <h2>5 &nbsp;计算效率对比</h2>
+  <p>Jagged 的收益来自两个方面：消除 padding 浪费，以及注意力计算量随序列长度的二次方缩减。当序列长度差异大时，收益尤为显著。</p>
+
+  <p>设 $n$ 条序列长度为 $[l_1, l_2, ..., l_n]$，最大长度为 $L = \max(l_i)$：</p>
+  <div class="math-block">
+    $$\text{Padding 计算量} \propto n \cdot L^2 \qquad \text{Jagged 计算量} \propto \sum_{i=1}^n l_i^2$$
+    <div class="math-label">注意力计算是 $O(L^2)$ 的，序列长度对计算量影响是二次方级别</div>
+  </div>
+
+  <div class="viz">
+    <div class="viz-header"><div class="viz-dot" style="background:var(--accent)"></div><span class="viz-title">交互 · 计算量对比</span></div>
+    <div class="viz-body">
+      <canvas id="cEff" height="180"></canvas>
+      <p class="fig-cap">拖动滑块改变序列长度，观察 Padding vs Jagged 计算量的差距</p>
+      <div id="effStats" style="margin-top:12px;font-size:13px;color:var(--text2)"></div>
+    </div>
+  </div>
+
+  <div class="callout green">
+    <strong>为什么二次方差距这么大：</strong>假设3条序列长度为 [2, 8, 2]，最大长度 8。Padding 计算量 ∝ 3×64=192；Jagged 计算量 ∝ 4+64+4=72，节省 62%。如果差距更极端，节省比例更高。
+  </div>
+</section>
+
+<hr>
+
+<!-- 6. 实现关键 -->
+<section id="s6">
+  <h2>6 &nbsp;实现：cu_seqlens</h2>
+  <p>Jagged Attention 的实现核心是维护一个<strong>累积序列长度数组</strong>（cumulative sequence lengths），告诉 kernel 每条子序列的边界在哪里。</p>
+
+  <div class="math-block">
+    $$\text{cu\_seqlens} = [0,\; l_1,\; l_1+l_2,\; l_1+l_2+l_3, \; \ldots]$$
+    <div class="math-label">FlashAttention varlen 接口中的 cu_seqlens_q / cu_seqlens_k</div>
+  </div>
+
+  <p>有了边界信息，CUDA kernel 就能为每个序列块独立计算注意力，不同块之间完全不相互影响，也不需要构造显式的大型掩码矩阵。这是 FlashAttention 的 <code>flash_attn_varlen_func</code> 接口背后的核心机制。</p>
+
+  <div class="viz">
+    <div class="viz-header"><div class="viz-dot" style="background:var(--blue)"></div><span class="viz-title">图示 · cu_seqlens 工作原理</span></div>
+    <div class="viz-body">
+      <canvas id="cImpl" height="160"></canvas>
+      <p class="fig-cap">cu_seqlens 数组标记每条子序列的起止位置，kernel 据此分配计算任务</p>
+    </div>
+  </div>
+
+  <div class="callout blue">
+    <strong>与 Flash Attention 的关系：</strong>Flash Attention 的 <code>varlen</code> 版本（变长注意力）就是 Jagged Attention 的高效实现。它直接在 CUDA level 处理不规则序列，不构造完整掩码矩阵，内存和计算都是 $O(\sum l_i^2)$ 而非 $O(n \cdot L^2)$。
+  </div>
+</section>
+
+<hr>
+
+<!-- 7. CUDA Kernel 底层原理 -->
+<section id="s7">
+  <h2>7 &nbsp;CUDA Kernel 底层：内循环如何跳过跨序列计算</h2>
+  <p>仅有 cu_seqlens 数组还不够——关键在于 kernel 如何<strong>利用边界信息直接缩短内循环范围</strong>，而不是计算完再用掩码过滤。</p>
+
+  <h3>标准 FlashAttention：扫描完整序列</h3>
+  <p>对每个 query 块，内循环遍历整条拼接序列的所有 K/V token：</p>
+  <div class="math-block" style="text-align:left;">
+    <pre style="font-family:monospace;font-size:13px;color:var(--text2);line-height:1.8;">for kv_start in range(0, <span style="color:var(--red)">total_len</span>, BLOCK_SIZE):
+    scores += Q[q_start:q_end] @ K[kv_start:kv_end].T
+    # ↑ 遍历所有 K/V，包括其他序列的</pre>
+    <div class="math-label">计算量 ∝ total_len² = (Σlᵢ)²，包含大量无用的跨序列计算</div>
+  </div>
+
+  <h3>Varlen FlashAttention：只扫描本序列</h3>
+  <p>先通过 cu_seqlens 确定当前 query 属于哪条序列，然后内循环只访问该序列的 K/V：</p>
+  <div class="math-block" style="text-align:left;">
+    <pre style="font-family:monospace;font-size:13px;color:var(--text2);line-height:1.8;">seq_id    = find_seq(q_start, cu_seqlens)      <span style="color:var(--muted)"># 二分查找</span>
+seq_start = cu_seqlens[seq_id]
+seq_end   = cu_seqlens[seq_id + 1]
+
+for kv_start in range(<span style="color:var(--green)">seq_start</span>, <span style="color:var(--green)">seq_end</span>, BLOCK_SIZE):
+    scores += Q[q_start:q_end] @ K[kv_start:kv_end].T
+    # ↑ 只遍历本序列的 K/V，跨序列 token 从不被访问</pre>
+    <div class="math-label">计算量 ∝ Σlᵢ²，跨序列的 QK 乘法根本不执行</div>
+  </div>
+
+  <h3>线程块如何分配</h3>
+  <p>标准版按总长度均匀切块，varlen 版按<strong>每条序列独立切块</strong>：</p>
+  <div class="math-block" style="text-align:left;">
+    <pre style="font-family:monospace;font-size:13px;color:var(--text2);line-height:1.8;"><span style="color:var(--muted)"># 标准版：</span>
+num_blocks = ceil(total_len / BLOCK_M)    <span style="color:var(--muted)"># 所有序列合并分块</span>
+
+<span style="color:var(--muted)"># varlen 版：</span>
+num_blocks = Σᵢ ceil(lᵢ / BLOCK_M)       <span style="color:var(--muted)"># 每条序列独立分块</span></pre>
+    <div class="math-label">每个线程块在启动时就知道自己属于哪条序列，计算完全不越界</div>
+  </div>
+
+  <h3>内存布局为什么 cache 友好</h3>
+  <p>打包后 K/V 在内存里是按序列顺序连续排列的。内循环访问 <code>[seq_start, seq_end)</code> 这段连续地址，没有随机跳跃，L2 cache 命中率高：</p>
+  <div class="viz">
+    <div class="viz-header"><div class="viz-dot" style="background:var(--accent)"></div><span class="viz-title">图示 · 内存布局与内循环范围</span></div>
+    <div class="viz-body">
+      <canvas id="cKernel" height="160"></canvas>
+      <p class="fig-cap">每个线程块（▼）只扫描本序列在内存中的连续区间，从不触碰其他序列的 K/V</p>
+    </div>
+  </div>
+
+  <div class="callout green">
+    <strong>总结：</strong>Jagged Attention 的效率不靠"计算完再 mask"，而是在 kernel 层面彻底不做跨序列的 QK 乘法。cu_seqlens 是边界表，让内循环的起止点从 <code>[0, total)</code> 收缩到 <code>[seq_start, seq_end)</code>，这才是计算量从 $(\sum l_i)^2$ 降到 $\sum l_i^2$ 的根本原因。
+  </div>
+</section>
+
+</article>
+</main>
+</div>
+
+<script>
+const SEQ_COLORS = ['#3B82F6','#10B981','#F59E0B','#EF4444'];
+const DPR = window.devicePixelRatio || 1;
+
+function setup(cv, W, H){
+  cv.width = Math.round(W*DPR); cv.height = Math.round(H*DPR);
+  cv.style.width = W+'px'; cv.style.height = H+'px';
+  const ctx = cv.getContext('2d');
+  ctx.scale(DPR, DPR); ctx.clearRect(0,0,W,H);
+  return ctx;
+}
+
+function getLengths(){
+  return [
+    +document.getElementById('l1').value,
+    +document.getElementById('l2').value,
+    +document.getElementById('l3').value,
+    +document.getElementById('l4').value,
+  ];
+}
+
+// ── 1. Padding 浪费图 ───────────────────────────────
+function drawPad(){
+  const cv = document.getElementById('cPad');
+  const W = cv.parentElement.clientWidth - 40, H = 180;
+  const ctx = setup(cv, W, H);
+  const lens = getLengths();
+  const maxL = Math.max(...lens);
+  const n = lens.length;
+  const cell = Math.min(Math.floor((W - 40) / maxL), 28);
+  const rowH = Math.min(36, Math.floor((H - 20) / n));
+  const offX = 30, offY = 10;
+
+  lens.forEach((l, si) => {
+    for(let t = 0; t < maxL; t++){
+      const x = offX + t * cell, y = offY + si * rowH;
+      const isPad = t >= l;
+      ctx.fillStyle = isPad ? '#E5E7EB' : SEQ_COLORS[si];
+      ctx.fillRect(x+1, y+2, cell-2, rowH-6);
+      ctx.strokeStyle = isPad ? '#D1D5DB' : SEQ_COLORS[si]+'88';
+      ctx.lineWidth = 0.5;
+      ctx.strokeRect(x+1, y+2, cell-2, rowH-6);
+      if(!isPad && cell > 16){
+        ctx.fillStyle = '#fff';
+        ctx.font = 'bold 9px monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText(t+1, x + cell/2, y + rowH/2 + 1);
+      }
+    }
+    ctx.fillStyle = '#6B7280';
+    ctx.font = '10px sans-serif';
+    ctx.textAlign = 'right';
+    ctx.fillText(`S${si+1}`, offX-4, offY + si*rowH + rowH/2 + 3);
+  });
+
+  const total = n * maxL, eff = lens.reduce((a,b)=>a+b, 0), waste = total - eff;
+  document.getElementById('effTok').textContent = eff;
+  document.getElementById('padTok').textContent = waste;
+  document.getElementById('wasteRate').textContent = (waste/total*100).toFixed(1)+'%';
+  document.getElementById('v1').textContent = lens[0];
+  document.getElementById('v2').textContent = lens[1];
+  document.getElementById('v3').textContent = lens[2];
+  document.getElementById('v4').textContent = lens[3];
+}
+
+// ── 2. Packing 对比图 ──────────────────────────────
+function drawPack(){
+  const cv = document.getElementById('cPack');
+  const W = cv.parentElement.clientWidth - 40, H = 240;
+  const ctx = setup(cv, W, H);
+  const lens = getLengths();
+  const maxL = Math.max(...lens);
+  const total = lens.reduce((a,b)=>a+b,0);
+  const cell = Math.min(Math.floor((W-40)/Math.max(maxL,total)), 22);
+  const offX = 30, rh = 28;
+
+  // 上方：Padding
+  ctx.fillStyle = '#6B7280'; ctx.font = 'bold 11px sans-serif'; ctx.textAlign = 'left';
+  ctx.fillText('Padding', offX, 20);
+  lens.forEach((l, si) => {
+    for(let t = 0; t < maxL; t++){
+      const x = offX + t*cell, y = 30;
+      const isPad = t >= (si===0?0:si===1?lens[0]:si===2?lens[0]+lens[1]:lens[0]+lens[1]+lens[2]);
+      // 实际上 padding 方案每行独立，展示为4行
+    }
+  });
+  // 简化：展示第一条最长和最短对比
+  for(let si=0;si<lens.length;si++){
+    const y = 28 + si*rh;
+    for(let t=0;t<maxL;t++){
+      const isPad = t >= lens[si];
+      ctx.fillStyle = isPad ? '#F3F4F6' : SEQ_COLORS[si];
+      ctx.strokeStyle = isPad ? '#E5E7EB' : 'transparent';
+      ctx.lineWidth = 0.5;
+      ctx.fillRect(offX+t*cell+1, y+1, cell-2, rh-4);
+      if(isPad) ctx.strokeRect(offX+t*cell+1, y+1, cell-2, rh-4);
+    }
+    ctx.fillStyle='#6B7280';ctx.font='9px sans-serif';ctx.textAlign='right';
+    ctx.fillText(`S${si+1}`, offX-4, y+rh/2+2);
+  }
+  ctx.strokeStyle='#E2DFD9';ctx.lineWidth=1;ctx.setLineDash([4,3]);
+  ctx.beginPath();ctx.moveTo(offX,28+lens.length*rh+6);ctx.lineTo(offX+maxL*cell,28+lens.length*rh+6);ctx.stroke();
+  ctx.setLineDash([]);
+
+  // 下方：Packing（拼接）
+  const py = 28 + lens.length*rh + 18;
+  ctx.fillStyle='#6B7280';ctx.font='bold 11px sans-serif';ctx.textAlign='left';
+  ctx.fillText('Packing', offX, py-4);
+  let cx = offX;
+  lens.forEach((l, si) => {
+    for(let t=0;t<l;t++){
+      ctx.fillStyle = SEQ_COLORS[si];
+      ctx.fillRect(cx+1, py, cell-2, rh-4);
+      if(cell>14){
+        ctx.fillStyle='#fff';ctx.font='bold 9px monospace';ctx.textAlign='center';
+        ctx.fillText(t+1, cx+cell/2, py+rh/2-2);
+      }
+      cx += cell;
+    }
+    // 序列分隔线
+    if(si < lens.length-1){
+      ctx.strokeStyle='#fff';ctx.lineWidth=2;
+      ctx.beginPath();ctx.moveTo(cx,py-2);ctx.lineTo(cx,py+rh);ctx.stroke();
+    }
+  });
+  ctx.fillStyle='#6B7280';ctx.font='9px sans-serif';ctx.textAlign='right';
+  ctx.fillText('拼接', offX-4, py+rh/2-2);
+  // 标注总长度
+  ctx.strokeStyle='#9CA3AF';ctx.lineWidth=1;ctx.setLineDash([]);
+  ctx.beginPath();ctx.moveTo(offX,py+rh+6);ctx.lineTo(offX+total*cell,py+rh+6);ctx.stroke();
+  ctx.fillStyle='#9CA3AF';ctx.font='10px sans-serif';ctx.textAlign='center';
+  ctx.fillText(`总长 ${total}（无 padding）`, offX+total*cell/2, py+rh+18);
+}
+
+// ── 3. 掩码图 ─────────────────────────────────────
+// 存储 Jagged 掩码的布局参数，供 hover 使用
+let jagMeta = {offsetX:0, offsetY:0, cell:0, total:0, lens:[]};
+
+function drawMask(canvasId, mode, hoverRow=-1, hoverCol=-1){
+  const lens = getLengths().slice(0,3);
+  const total = lens.reduce((a,b)=>a+b,0);
+  const maxL = Math.max(...lens);
+  const cv = document.getElementById(canvasId);
+  const cw = cv.parentElement ? Math.floor((cv.parentElement.clientWidth-40)/2) : 180;
+  const W = Math.max(cw, 160), H = 200;
+  const ctx = setup(cv, W, H);
+
+  function seqOf(idx){
+    let cum=0;
+    for(let i=0;i<lens.length;i++){if(idx<cum+lens[i])return{si:i,local:idx-cum};cum+=lens[i];}
+    return{si:-1,local:-1};
+  }
+
+  if(mode==='pad'){
+    const cell = Math.min(Math.floor((W-20)/maxL), 18);
+    const ox = Math.floor((W - maxL*cell)/2);
+    const oy = Math.floor((H - maxL*cell)/2);
+    // 展示第一条序列的 padding 掩码
+    for(let r=0;r<maxL;r++){
+      for(let c=0;c<maxL;c++){
+        const isPadR = r >= lens[0], isPadC = c >= lens[0];
+        ctx.fillStyle = isPadR||isPadC ? '#F0F0EE' : SEQ_COLORS[0]+'33';
+        ctx.fillRect(ox+c*cell+1, oy+r*cell+1, cell-2, cell-2);
+        if(!isPadR&&!isPadC){ctx.strokeStyle=SEQ_COLORS[0]+'66';ctx.lineWidth=0.5;ctx.strokeRect(ox+c*cell+1,oy+r*cell+1,cell-2,cell-2);}
+      }
+    }
+    // padding 区域文字
+    if(maxL > lens[0]){
+      ctx.fillStyle='#B0A8A0';ctx.font='9px sans-serif';ctx.textAlign='center';
+      const px = ox+(lens[0]+maxL)/2*cell, py = oy+maxL/2*cell;
+      ctx.fillText('padding', px, py+3);
+    }
+    // 轴标签
+    for(let t=0;t<lens[0];t++){
+      ctx.fillStyle=SEQ_COLORS[0];ctx.font='8px monospace';ctx.textAlign='center';
+      ctx.fillText(t+1, ox+t*cell+cell/2, oy-3);
+    }
+  } else {
+    const cell = Math.min(Math.floor((W-20)/total), 18);
+    const offsetX = Math.floor((W - total*cell)/2);
+    const offsetY = Math.floor((H - total*cell)/2);
+    jagMeta = {offsetX, offsetY, cell, total, lens:[...lens]};
+
+    for(let r=0;r<total;r++){
+      for(let c=0;c<total;c++){
+        const {si:sr} = seqOf(r), {si:sc} = seqOf(c);
+        const attend = sr===sc;
+        const isHoverRow = r===hoverRow, isHoverCol = c===hoverCol;
+        const isTarget = r===hoverRow && c===hoverCol;
+
+        let fill, stroke;
+        if(isTarget){
+          fill = attend ? SEQ_COLORS[sr] : '#DC2626';
+          stroke = fill;
+        } else if(isHoverRow || isHoverCol){
+          fill = attend ? SEQ_COLORS[sr]+'77' : '#F0EDEA';
+          stroke = isHoverRow||isHoverCol ? '#9CA3AF' : null;
+        } else {
+          fill = attend ? SEQ_COLORS[sr]+'33' : '#F9FAFB';
+          stroke = attend ? SEQ_COLORS[sr]+'55' : null;
+        }
+        ctx.fillStyle = fill;
+        ctx.fillRect(offsetX+c*cell+1, offsetY+r*cell+1, cell-2, cell-2);
+        if(stroke){ctx.strokeStyle=stroke;ctx.lineWidth=0.5;ctx.strokeRect(offsetX+c*cell+1,offsetY+r*cell+1,cell-2,cell-2);}
+      }
+    }
+    // 悬停行列高亮线
+    if(hoverRow>=0){
+      ctx.strokeStyle='#374151';ctx.lineWidth=1.5;ctx.setLineDash([]);
+      ctx.strokeRect(offsetX, offsetY+hoverRow*cell, total*cell, cell);
+    }
+    if(hoverCol>=0){
+      ctx.strokeStyle='#374151';ctx.lineWidth=1.5;
+      ctx.strokeRect(offsetX+hoverCol*cell, offsetY, cell, total*cell);
+    }
+    // 块边界线
+    let cum=0;
+    lens.forEach((l,i)=>{
+      cum+=l;
+      if(i<lens.length-1){
+        ctx.strokeStyle='#6B7280';ctx.lineWidth=1.5;ctx.setLineDash([]);
+        ctx.beginPath();ctx.moveTo(offsetX+cum*cell,offsetY);ctx.lineTo(offsetX+cum*cell,offsetY+total*cell);ctx.stroke();
+        ctx.beginPath();ctx.moveTo(offsetX,offsetY+cum*cell);ctx.lineTo(offsetX+total*cell,offsetY+cum*cell);ctx.stroke();
+      }
+    });
+    // 轴序列标签
+    cum=0;
+    lens.forEach((l,i)=>{
+      ctx.fillStyle=SEQ_COLORS[i];ctx.font='bold 9px sans-serif';ctx.textAlign='center';
+      ctx.fillText(`S${i+1}`, offsetX+(cum+l/2)*cell, offsetY-4);
+      cum+=l;
+    });
+  }
+}
+
+// ── 4. 因果/双向 ──────────────────────────────────
+function drawCausalMask(canvasId, causal){
+  const lens = [4, 3, 5];
+  const total = lens.reduce((a,b)=>a+b,0);
+  const cv = document.getElementById(canvasId);
+  const W = cv.parentElement ? Math.floor((cv.parentElement.clientWidth-40)/2) : 180;
+  const H = 200;
+  const cell = Math.min(Math.floor((W-20)/total), 16);
+  const ctx = setup(cv, W, H);
+  const ox = Math.floor((W-total*cell)/2);
+  const oy = Math.floor((H-total*cell)/2);
+
+  function seqOf(idx){
+    let cum=0;
+    for(let i=0;i<lens.length;i++){if(idx<cum+lens[i])return{si:i,local:idx-cum};cum+=lens[i];}
+    return{si:-1,local:-1};
+  }
+
+  for(let r=0;r<total;r++){
+    for(let c=0;c<total;c++){
+      const {si:sr}=seqOf(r), {si:sc}=seqOf(c);
+      let attend = sr===sc;
+      if(causal && attend){ attend = c<=r; }
+      ctx.fillStyle = attend ? SEQ_COLORS[sr]+'55' : '#F9FAFB';
+      ctx.fillRect(ox+c*cell+1, oy+r*cell+1, cell-2, cell-2);
+      if(attend){ ctx.strokeStyle=SEQ_COLORS[sr]+'88';ctx.lineWidth=0.5;ctx.strokeRect(ox+c*cell+1,oy+r*cell+1,cell-2,cell-2); }
+    }
+  }
+  // 块边界
+  let cum=0;
+  lens.forEach((l,i)=>{
+    cum+=l;
+    if(i<lens.length-1){
+      ctx.strokeStyle='#9CA3AF';ctx.lineWidth=1;ctx.setLineDash([3,2]);
+      ctx.beginPath();ctx.moveTo(ox+cum*cell,oy);ctx.lineTo(ox+cum*cell,oy+total*cell);ctx.stroke();
+      ctx.beginPath();ctx.moveTo(ox,oy+cum*cell);ctx.lineTo(ox+total*cell,oy+cum*cell);ctx.stroke();
+      ctx.setLineDash([]);
+    }
+  });
+  // 标签
+  cum=0;
+  lens.forEach((l,i)=>{
+    ctx.fillStyle=SEQ_COLORS[i];ctx.font='9px sans-serif';ctx.textAlign='center';
+    ctx.fillText(`S${i+1}`,ox+(cum+l/2)*cell, oy-4);
+    cum+=l;
+  });
+}
+
+// ── 5. 效率对比柱状图 ──────────────────────────────
+function drawEff(){
+  const cv = document.getElementById('cEff');
+  const W = cv.parentElement.clientWidth - 40, H = 180;
+  const ctx = setup(cv, W, H);
+  const lens = getLengths();
+  const maxL = Math.max(...lens);
+  const n = lens.length;
+  const padCost = n * maxL * maxL;
+  const jagCost = lens.reduce((a,l)=>a+l*l,0);
+  const maxCost = padCost;
+  const barMaxW = W - 120;
+  const barH = 28, gap = 14, offX = 80, offY = 24;
+
+  [[padCost,'#EF4444','Padding'],[jagCost,'#10B981','Jagged']].forEach(([cost,col,label],i)=>{
+    const bw = cost/maxCost * barMaxW;
+    const y = offY + i*(barH+gap);
+    // 背景
+    ctx.fillStyle='#F3F4F6';
+    ctx.beginPath();ctx.roundRect?ctx.roundRect(offX,y,barMaxW,barH,4):ctx.rect(offX,y,barMaxW,barH);ctx.fill();
+    // 柱
+    ctx.fillStyle=col+'cc';
+    ctx.beginPath();ctx.roundRect?ctx.roundRect(offX,y,bw,barH,4):ctx.rect(offX,y,bw,barH);ctx.fill();
+    // 标签
+    ctx.fillStyle='#374151';ctx.font='bold 12px sans-serif';ctx.textAlign='right';
+    ctx.fillText(label, offX-8, y+barH/2+4);
+    ctx.fillStyle='#374151';ctx.font='12px monospace';ctx.textAlign='left';
+    ctx.fillText(cost.toLocaleString(), offX+bw+8, y+barH/2+4);
+  });
+
+  const saving = ((padCost-jagCost)/padCost*100).toFixed(1);
+  document.getElementById('effStats').innerHTML =
+    `Padding 计算量：<strong>${padCost.toLocaleString()}</strong> 单位 &nbsp;|&nbsp; Jagged 计算量：<strong>${jagCost.toLocaleString()}</strong> 单位 &nbsp;|&nbsp; <strong style="color:var(--green)">节省 ${saving}%</strong>`;
+}
+
+// ── 6. cu_seqlens 图示 ────────────────────────────
+function drawImpl(){
+  const cv = document.getElementById('cImpl');
+  const W = cv.parentElement.clientWidth - 40, H = 160;
+  const ctx = setup(cv, W, H);
+  const lens = getLengths().slice(0,3);
+  const total = lens.reduce((a,b)=>a+b,0);
+  const cell = Math.min(Math.floor((W-60)/total), 26);
+  const offX = 30, tokY = 30;
+
+  // Token 序列
+  let cx=offX;
+  const positions = [];
+  lens.forEach((l,si)=>{
+    for(let t=0;t<l;t++){
+      ctx.fillStyle=SEQ_COLORS[si];
+      ctx.beginPath();ctx.roundRect?ctx.roundRect(cx,tokY,cell-2,cell-2,4):ctx.rect(cx,tokY,cell-2,cell-2);ctx.fill();
+      ctx.fillStyle='#fff';ctx.font='bold 9px monospace';ctx.textAlign='center';
+      ctx.fillText(t,cx+(cell-2)/2,tokY+(cell-2)/2+3);
+      positions.push(cx);
+      cx+=cell;
+    }
+  });
+
+  // cu_seqlens 标记
+  const cus = [0];
+  let cum=0;
+  lens.forEach(l=>{cum+=l;cus.push(cum);});
+  ctx.strokeStyle='#374151';ctx.lineWidth=1.5;ctx.setLineDash([]);
+  ctx.fillStyle='#374151';ctx.font='bold 10px monospace';ctx.textAlign='center';
+  cus.forEach((c,i)=>{
+    const px = offX + c*cell - (i>0?1:0);
+    ctx.beginPath();ctx.moveTo(px,tokY-4);ctx.lineTo(px,tokY+cell);ctx.stroke();
+    ctx.fillText(c, px, tokY+cell+14);
+  });
+  // cu_seqlens 数组展示
+  ctx.fillStyle='#9CA3AF';ctx.font='10px sans-serif';ctx.textAlign='left';
+  ctx.fillText('cu_seqlens = ['+cus.join(', ')+']', offX, H-12);
+  // 序列范围标注
+  cum=0;
+  lens.forEach((l,i)=>{
+    const x1=offX+cum*cell, x2=offX+(cum+l)*cell-2;
+    ctx.strokeStyle=SEQ_COLORS[i];ctx.lineWidth=1.5;
+    ctx.beginPath();ctx.moveTo(x1,tokY+cell+4);ctx.lineTo(x2,tokY+cell+4);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(x1,tokY+cell+2);ctx.lineTo(x1,tokY+cell+6);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(x2,tokY+cell+2);ctx.lineTo(x2,tokY+cell+6);ctx.stroke();
+    ctx.fillStyle=SEQ_COLORS[i];ctx.font='bold 9px sans-serif';ctx.textAlign='center';
+    ctx.fillText(`S${i+1}(len=${l})`, (x1+x2)/2, tokY+cell+20);
+    cum+=l;
+  });
+}
+
+// ── 7. Kernel 内存布局图 ──────────────────────────────
+function drawKernel(){
+  const cv = document.getElementById('cKernel');
+  if(!cv) return;
+  const W = cv.parentElement.clientWidth - 40, H = 160;
+  const ctx = setup(cv, W, H);
+  const lens = getLengths().slice(0,3);
+  const total = lens.reduce((a,b)=>a+b,0);
+  const cell = Math.min(Math.floor((W-80)/total), 28);
+  const offX = 40, tokY = 30, BLOCK = 2;
+
+  // 标题行：内存地址
+  ctx.fillStyle='#9CA3AF';ctx.font='9px monospace';ctx.textAlign='center';
+  ctx.fillText('内存地址 →', offX/2, tokY+cell/2+3);
+
+  // 画所有 token 块
+  let cx=offX, positions=[];
+  lens.forEach((l,si)=>{
+    for(let t=0;t<l;t++){
+      ctx.fillStyle=SEQ_COLORS[si]+(t===0||t===l-1?'':'99');
+      ctx.fillRect(cx+1, tokY+1, cell-2, cell-2);
+      ctx.strokeStyle=SEQ_COLORS[si];ctx.lineWidth=0.5;
+      ctx.strokeRect(cx+1,tokY+1,cell-2,cell-2);
+      positions.push({x:cx,si,t});
+      cx+=cell;
+    }
+  });
+
+  // cu_seqlens 边界标记
+  let cum=0;
+  lens.forEach((l,i)=>{
+    const bx = offX+cum*cell;
+    ctx.strokeStyle='#374151';ctx.lineWidth=2;
+    ctx.beginPath();ctx.moveTo(bx,tokY-6);ctx.lineTo(bx,tokY+cell+4);ctx.stroke();
+    ctx.fillStyle='#374151';ctx.font='bold 9px monospace';ctx.textAlign='center';
+    ctx.fillText(cum, bx, tokY-8);
+    cum+=l;
+  });
+  // 最后边界
+  ctx.strokeStyle='#374151';ctx.lineWidth=2;
+  ctx.beginPath();ctx.moveTo(offX+total*cell,tokY-6);ctx.lineTo(offX+total*cell,tokY+cell+4);ctx.stroke();
+  ctx.fillText(total, offX+total*cell, tokY-8);
+  ctx.fillStyle='#9CA3AF';ctx.font='8px sans-serif';ctx.textAlign='center';
+  ctx.fillText('cu_seqlens', offX+total*cell/2, tokY-18);
+
+  // 三个线程块扫描范围
+  cum=0;
+  lens.forEach((l,si)=>{
+    const bx=offX+cum*cell, bw=l*cell;
+    const by=tokY+cell+12;
+    ctx.fillStyle=SEQ_COLORS[si]+'22';
+    ctx.fillRect(bx,by,bw,18);
+    ctx.strokeStyle=SEQ_COLORS[si];ctx.lineWidth=1.5;
+    ctx.strokeRect(bx,by,bw,18);
+    // 箭头
+    ctx.fillStyle=SEQ_COLORS[si];ctx.font='bold 9px sans-serif';ctx.textAlign='center';
+    ctx.fillText(`▼ Thread Block S${si+1} 扫描 [${cum}, ${cum+l})`, bx+bw/2, by+12);
+    // 对应的内存访问箭头
+    ctx.strokeStyle=SEQ_COLORS[si]+'88';ctx.lineWidth=1;ctx.setLineDash([2,2]);
+    ctx.beginPath();ctx.moveTo(bx,by);ctx.lineTo(bx,tokY+cell+2);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(bx+bw,by);ctx.lineTo(bx+bw,tokY+cell+2);ctx.stroke();
+    ctx.setLineDash([]);
+    cum+=l;
+  });
+
+  // 标注不访问区域
+  ctx.fillStyle='#9CA3AF';ctx.font='9px sans-serif';ctx.textAlign='center';
+  ctx.fillText('↑ 连续内存区间，不越界访问其他序列', offX+total*cell/2, H-8);
+}
+
+function redraw(){
+  drawPad(); drawPack();
+  drawMask('cMaskPad','pad');
+  drawMask('cMaskJag','jag');
+  drawCausalMask('cBidir', false);
+  drawCausalMask('cCausal', true);
+  drawEff(); drawImpl(); drawKernel();
+}
+
+window.addEventListener('resize', redraw);
+redraw();
+
+// ── Jagged 掩码悬停交互 ──────────────────────────────
+const jagCanvas = document.getElementById('cMaskJag');
+jagCanvas.style.cursor = 'crosshair';
+
+jagCanvas.addEventListener('mousemove', e => {
+  const rect = jagCanvas.getBoundingClientRect();
+  const {offsetX, offsetY, cell, total, lens} = jagMeta;
+  if(!cell) return;
+  const mx = (e.clientX - rect.left);
+  const my = (e.clientY - rect.top);
+  const col = Math.floor((mx - offsetX) / cell);
+  const row = Math.floor((my - offsetY) / cell);
+
+  if(row<0||row>=total||col<0||col>=total){
+    drawMask('cMaskJag','jag');
+    document.getElementById('maskTooltip').innerHTML = '悬停格子查看 attend 关系';
+    document.getElementById('maskTooltip').style.color = 'var(--muted)';
+    return;
+  }
+
+  drawMask('cMaskJag','jag', row, col);
+
+  // 找所属序列
+  function seqOf(idx){
+    let cum=0;
+    for(let i=0;i<lens.length;i++){if(idx<cum+lens[i])return{si:i,local:idx-cum};cum+=lens[i];}
+    return{si:-1,local:-1};
+  }
+  const {si:sr, local:lr} = seqOf(row);
+  const {si:sc, local:lc} = seqOf(col);
+  const attend = sr===sc;
+  const rowColor = SEQ_COLORS[sr], colColor = SEQ_COLORS[sc];
+  const tip = document.getElementById('maskTooltip');
+
+  if(attend){
+    tip.innerHTML =
+      `<span style="color:${rowColor};font-weight:700">S${sr+1}[${lr}]</span>`+
+      ` &nbsp;→&nbsp; `+
+      `<span style="color:${colColor};font-weight:700">S${sc+1}[${lc}]</span>`+
+      ` &nbsp;<span style="color:var(--green);font-weight:700">✓ 可以 attend</span>`+
+      ` &nbsp;（同属序列 ${sr+1}）`;
+    tip.style.color = 'var(--text2)';
+  } else {
+    tip.innerHTML =
+      `<span style="color:${rowColor};font-weight:700">S${sr+1}[${lr}]</span>`+
+      ` &nbsp;→&nbsp; `+
+      `<span style="color:${colColor};font-weight:700">S${sc+1}[${lc}]</span>`+
+      ` &nbsp;<span style="color:var(--red);font-weight:700">✗ 不可 attend</span>`+
+      ` &nbsp;（跨序列：${sr+1} ≠ ${sc+1}）`;
+    tip.style.color = 'var(--text2)';
+  }
+});
+
+jagCanvas.addEventListener('mouseleave', () => {
+  drawMask('cMaskJag','jag');
+  document.getElementById('maskTooltip').innerHTML = '悬停格子查看 attend 关系';
+  document.getElementById('maskTooltip').style.color = 'var(--muted)';
+});
+</script>
+</body>
+</html>

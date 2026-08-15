@@ -1,0 +1,642 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FlashAttention 图解</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"
+  onload="renderMathInElement(document.body,{delimiters:[{left:'$$',right:'$$',display:true},{left:'$',right:'$',display:false}],throwOnError:false})"></script>
+<style>
+:root{
+  --bg:#FAFAF8;--bg2:#F4F2EF;--bg3:#ECEAE6;
+  --text:#1A1A1C;--text2:#3C3C40;--muted:#8A8A8F;
+  --border:#E2DFD9;--shadow:0 1px 3px rgba(0,0,0,0.05),0 4px 16px rgba(0,0,0,0.05);
+  --accent:#1D5FBF;--accent-bg:#EBF2FF;
+  --green:#0E7E3E;--green-bg:#EDFAF3;
+  --red:#B91C1C;--red-bg:#FEF2F2;
+  --orange:#C96A2A;--orange-bg:#FEF0E6;
+  --purple:#7C3AED;--purple-bg:#F5F3FF;
+  --r:10px;
+  --hbm:#EF4444;--sram:#10B981;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+html{scroll-behavior:smooth;}
+body{background:var(--bg);color:var(--text);font-family:-apple-system,'Segoe UI',sans-serif;font-size:16px;line-height:1.8;}
+.layout{display:flex;min-height:100vh;}
+.sidebar{width:200px;flex-shrink:0;position:sticky;top:0;height:100vh;background:var(--bg2);border-right:1px solid var(--border);padding:20px 14px;display:flex;flex-direction:column;gap:0;overflow-y:auto;}
+.sidebar h1{font-size:.95rem;color:var(--accent);line-height:1.35;font-weight:800;}
+.sidebar p{font-size:10px;color:var(--muted);margin-top:2px;}
+.sep{border:none;border-top:1px solid var(--border);margin:14px 0;}
+.ctrl{margin-bottom:10px;}
+.ctrl-row-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:3px;}
+.ctrl-row-top label{font-size:10px;color:var(--muted);}
+.ctrl-val{font-size:12px;font-weight:700;color:var(--accent);font-family:monospace;}
+.ctrl input[type=range]{width:100%;accent-color:var(--accent);}
+.nav-sec{display:flex;flex-direction:column;gap:1px;}
+.nav-link{font-size:11px;color:var(--muted);text-decoration:none;padding:5px 8px;border-radius:5px;display:block;transition:all .12s;}
+.nav-link:hover{color:var(--text2);background:var(--bg3);}
+.btn{display:inline-flex;align-items:center;gap:6px;padding:7px 16px;border-radius:8px;border:1.5px solid var(--accent);background:var(--accent-bg);color:var(--accent);font-size:13px;font-weight:600;cursor:pointer;transition:all .15s;}
+.btn:hover{background:var(--accent);color:#fff;}
+.btn.active{background:var(--red);border-color:var(--red);color:#fff;}
+.main{flex:1;overflow-x:hidden;}
+.article{max-width:740px;margin:0 auto;padding:64px 24px 120px;}
+.hero{margin-bottom:52px;padding-bottom:40px;border-bottom:2px solid var(--border);}
+.eyebrow{font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--accent);margin-bottom:14px;}
+h1{font-size:2rem;font-weight:800;line-height:1.2;margin-bottom:16px;}
+.lead{font-size:17px;color:var(--text2);line-height:1.75;}
+section{margin-bottom:60px;}
+h2{font-size:1.25rem;font-weight:700;margin-bottom:14px;padding-bottom:8px;border-bottom:1px solid var(--border);}
+h3{font-size:1rem;font-weight:600;margin:22px 0 8px;}
+p{color:var(--text2);margin-bottom:16px;}
+.callout{border-left:3px solid var(--accent);background:var(--accent-bg);border-radius:0 8px 8px 0;padding:14px 18px;margin:20px 0;font-size:14px;color:var(--text2);}
+.callout.green{border-color:var(--green);background:var(--green-bg);}
+.callout.red{border-color:var(--red);background:var(--red-bg);}
+.callout.orange{border-color:var(--orange);background:var(--orange-bg);}
+.math-block{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:18px 24px;margin:20px 0;overflow-x:auto;text-align:center;}
+.math-label{font-size:11px;color:var(--muted);text-align:right;margin-top:6px;font-family:monospace;}
+.viz{background:#fff;border:1px solid var(--border);border-radius:var(--r);box-shadow:var(--shadow);margin:24px -12px;overflow:hidden;}
+.viz-header{padding:11px 20px;background:var(--bg2);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;}
+.viz-dot{width:8px;height:8px;border-radius:50%;}
+.viz-title{font-size:12px;font-weight:600;color:var(--muted);letter-spacing:.04em;text-transform:uppercase;}
+.viz-body{padding:20px;}
+canvas{display:block;}
+.fig-cap{font-size:12px;color:var(--muted);text-align:center;margin-top:10px;line-height:1.5;}
+hr{border:none;border-top:1px solid var(--border);margin:52px 0;}
+.two-col{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin:20px 0;}
+.panel{background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:16px;}
+.panel-title{font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px;}
+code{font-family:monospace;background:var(--bg2);padding:1px 5px;border-radius:3px;font-size:0.9em;}
+</style>
+</head>
+<body>
+<div class="layout">
+<aside class="sidebar">
+  <div>
+    <h1>FlashAttention</h1>
+    <p style="margin-top:4px">IO-Aware 注意力计算图解</p>
+  </div>
+  <hr class="sep">
+  <div class="ctrl">
+    <div class="ctrl-row-top"><label>序列长度 N</label><span class="ctrl-val" id="seqNVal">8</span></div>
+    <input type="range" id="seqN" min="4" max="16" step="2" value="8" oninput="redraw()">
+  </div>
+  <div class="ctrl">
+    <div class="ctrl-row-top"><label>分块大小 B</label><span class="ctrl-val" id="blockBVal">2</span></div>
+    <input type="range" id="blockB" min="1" max="4" step="1" value="2" oninput="redraw()">
+  </div>
+  <hr class="sep">
+  <button class="btn" id="animBtn" onclick="toggleAnim()">▶ 播放动画</button>
+  <hr class="sep">
+  <a href="#s1" class="nav-link">① 瓶颈：内存带宽</a>
+  <a href="#s2" class="nav-link">② 标准 Attention 的问题</a>
+  <a href="#s3" class="nav-link">③ 分块计算思路</a>
+  <a href="#s4" class="nav-link">④ Online Softmax</a>
+  <a href="#s5" class="nav-link">⑤ 动画：Tiling 过程</a>
+  <a href="#s6" class="nav-link">⑥ 复杂度对比</a>
+</aside>
+<main class="main">
+<article class="article">
+
+<header class="hero">
+  <div class="eyebrow">Transformer · 高效计算</div>
+  <h1>FlashAttention<br>IO-Aware 注意力</h1>
+  <p class="lead">标准注意力的瓶颈不是计算量，而是<strong>内存读写</strong>——把 $N \times N$ 的注意力矩阵写入 HBM 再读回来，极其昂贵。FlashAttention 通过分块（Tiling）把计算限制在快速的 SRAM 里，从不在 HBM 上存整个注意力矩阵，速度提升 2-4×，内存降至 $O(N)$。</p>
+</header>
+
+<section id="s1">
+  <h2>1 &nbsp;真正的瓶颈：内存带宽，不是算力</h2>
+  <p>GPU 有两级存储：HBM（显存，容量大但慢）和 SRAM（片上缓存，容量小但极快）。计算单元（CUDA Core / Tensor Core）只能直接访问 SRAM，所有数据必须先从 HBM 加载到 SRAM 才能计算。</p>
+
+  <div class="viz">
+    <div class="viz-header"><div class="viz-dot" style="background:var(--hbm)"></div><span class="viz-title">图示 · GPU 内存层次</span></div>
+    <div class="viz-body"><canvas id="cMem" height="160"></canvas>
+    <p class="fig-cap">HBM 带宽约 2TB/s；SRAM 带宽约 19TB/s——快 10 倍。减少 HBM 读写是加速的关键。</p></div>
+  </div>
+
+  <div class="callout orange">
+    <strong>Roofline 分析：</strong>标准注意力是<strong>内存瓶颈（Memory Bound）</strong>操作，GPU 的计算单元大部分时间在等 HBM 数据传输，而不是在做矩阵乘法。即使算力翻倍，速度也不会提升。
+  </div>
+</section>
+
+<hr>
+
+<section id="s2">
+  <h2>2 &nbsp;标准 Attention 的 HBM 读写</h2>
+  <p>标准注意力实现中，每一步都要把中间结果写回 HBM，下一步再读出来：</p>
+
+  <div class="viz">
+    <div class="viz-header"><div class="viz-dot" style="background:var(--hbm)"></div><span class="viz-title">图示 · 标准 Attention 的 IO 流程</span></div>
+    <div class="viz-body"><canvas id="cStd" height="200"></canvas>
+    <p class="fig-cap">红色箭头 = HBM 读写（昂贵）。$S = QK^T$ 和 $P = \text{softmax}(S)$ 都要写入 HBM 再读回，每次都是 $O(N^2)$ 的 IO。</p></div>
+  </div>
+
+  <div class="math-block">
+    $$\text{HBM IO} = O(N^2 d) \text{（读 Q,K,V）} + O(N^2) \text{（写 S）} + O(N^2) \text{（读 S 写 P）} + O(N^2 d) \text{（写 O）}$$
+    <div class="math-label">主项是 $O(N^2)$，对长序列代价极高</div>
+  </div>
+</section>
+
+<hr>
+
+<section id="s3">
+  <h2>3 &nbsp;FlashAttention 的分块思路</h2>
+  <p>核心思路：把 Q、K、V 分成大小为 $B$ 的块，每次只把一小块加载到 SRAM，<strong>在 SRAM 里完成计算后直接累加到输出</strong>，从不把完整的 $N \times N$ 注意力矩阵写到 HBM。</p>
+
+  <div class="viz">
+    <div class="viz-header"><div class="viz-dot" style="background:var(--sram)"></div><span class="viz-title">图示 · FlashAttention 分块计算</span></div>
+    <div class="viz-body"><canvas id="cTile" height="220"></canvas>
+    <p class="fig-cap">彩色块 = 当前在 SRAM 中计算的 Q/K 块组合；灰色 = 尚未计算。每次只有一小块在片上，从不构造完整矩阵。</p>
+    <div style="display:flex;gap:20px;margin-top:12px;font-size:13px;">
+      <span><span style="display:inline-block;width:12px;height:12px;background:#3B82F6;border-radius:2px;margin-right:4px;vertical-align:middle"></span>Q 块（当前）</span>
+      <span><span style="display:inline-block;width:12px;height:12px;background:#10B981;border-radius:2px;margin-right:4px;vertical-align:middle"></span>K/V 块（当前）</span>
+      <span><span style="display:inline-block;width:12px;height:12px;background:#F59E0B;border-radius:2px;margin-right:4px;vertical-align:middle"></span>正在计算的注意力块</span>
+    </div></div>
+  </div>
+
+  <p>对于每个 Q 块 $Q_i$，遍历所有 K/V 块 $K_j, V_j$：在 SRAM 中计算 $Q_i K_j^T$，用 online softmax 更新运行统计量，累加到输出 $O_i$。整个过程 HBM 只需要读写 $O(N)$ 大小的输出。</p>
+</section>
+
+<hr>
+
+<section id="s4">
+  <h2>4 &nbsp;Online Softmax：无需存完整矩阵</h2>
+  <p>分块的关键挑战是：softmax 需要看到一行的所有元素才能计算归一化分母。FlashAttention 用 <strong>online softmax</strong> 解决——增量更新最大值和归一化分母，每处理一个新块就修正之前的累积值。</p>
+
+  <div class="math-block">
+    $$m_{\text{new}} = \max(m_{\text{old}},\; \max(x_{\text{new}}))$$
+    $$l_{\text{new}} = e^{m_{\text{old}} - m_{\text{new}}} \cdot l_{\text{old}} + \sum e^{x_{\text{new}} - m_{\text{new}}}$$
+    $$O_{\text{new}} = \frac{e^{m_{\text{old}} - m_{\text{new}}} \cdot l_{\text{old}} \cdot O_{\text{old}} + \sum e^{x_{\text{new}} - m_{\text{new}}} \cdot V_{\text{new}}}{l_{\text{new}}}$$
+    <div class="math-label">$m$ = 运行最大值；$l$ = 运行归一化分母。每遇到更大的值，用缩放因子修正之前的累积</div>
+  </div>
+
+  <div class="viz">
+    <div class="viz-header"><div class="viz-dot" style="background:var(--purple)"></div><span class="viz-title">交互 · Online Softmax 逐步演示</span></div>
+    <div class="viz-body">
+      <canvas id="cSoftmax" height="200"></canvas>
+      <p class="fig-cap">每次处理一个新块时，如何用缩放因子修正之前累积的 softmax 统计量</p>
+      <div style="display:flex;gap:10px;margin-top:12px;">
+        <button class="btn" onclick="smStep(-1)" style="padding:5px 12px;font-size:12px">◀ 上一步</button>
+        <button class="btn" onclick="smStep(1)" style="padding:5px 12px;font-size:12px">下一步 ▶</button>
+        <button class="btn" onclick="smReset()" style="padding:5px 12px;font-size:12px;border-color:var(--border);color:var(--muted);background:none">↺ 重置</button>
+      </div>
+      <div id="smDetail" style="margin-top:12px;font-size:13px;color:var(--text2);background:var(--bg2);padding:12px;border-radius:8px;font-family:monospace;line-height:2;min-height:80px;"></div>
+    </div>
+  </div>
+</section>
+
+<hr>
+
+<section id="s5">
+  <h2>5 &nbsp;动画：Tiling 完整过程</h2>
+  <p>点击播放，观察 FlashAttention 如何逐块处理 Q 和 K/V，每个 Q 块依次与所有 K/V 块配对计算，最终得到完整输出——全程不在 HBM 上存 $N \times N$ 矩阵。</p>
+
+  <div class="viz">
+    <div class="viz-header"><div class="viz-dot" style="background:var(--accent)"></div><span class="viz-title">动画 · 分块注意力计算流程</span></div>
+    <div class="viz-body">
+      <canvas id="cAnim" height="300"></canvas>
+      <p class="fig-cap" id="animCaption">点击「播放动画」开始</p>
+    </div>
+  </div>
+</section>
+
+<hr>
+
+<section id="s6">
+  <h2>6 &nbsp;复杂度对比</h2>
+
+  <div class="two-col">
+    <div class="panel">
+      <div class="panel-title">标准 Attention</div>
+      <p style="font-size:14px;color:var(--text2)">HBM IO：$O(Nd + N^2)$</p>
+      <p style="font-size:14px;color:var(--text2)">HBM 存储：$O(N^2)$（注意力矩阵）</p>
+      <p style="font-size:14px;color:var(--text2)">计算量：$O(N^2 d)$</p>
+      <p style="font-size:13px;color:var(--muted);margin-top:6px">长序列时 IO 是主要瓶颈</p>
+    </div>
+    <div class="panel">
+      <div class="panel-title">FlashAttention</div>
+      <p style="font-size:14px;color:var(--text2)">HBM IO：$O(N^2 d / M)$，$M$ = SRAM 大小</p>
+      <p style="font-size:14px;color:var(--text2)">HBM 存储：$O(N)$（只存输出）</p>
+      <p style="font-size:14px;color:var(--text2)">计算量：$O(N^2 d)$（相同）</p>
+      <p style="font-size:13px;color:var(--muted);margin-top:6px">IO 大幅减少，内存从平方降到线性</p>
+    </div>
+  </div>
+
+  <div class="viz">
+    <div class="viz-header"><div class="viz-dot" style="background:var(--accent)"></div><span class="viz-title">图示 · HBM 读写量对比</span></div>
+    <div class="viz-body">
+      <canvas id="cCmp" height="200"></canvas>
+      <p class="fig-cap">随序列长度增加，标准 Attention 的 HBM 读写呈 $N^2$ 增长；FlashAttention 增长更慢（因分块减少了重复 IO）</p>
+    </div>
+  </div>
+
+  <div class="callout green">
+    <strong>实测收益：</strong>FlashAttention 在 A100 GPU 上比 PyTorch 标准实现快 2-4×，内存占用减少 5-20×。这让训练超长序列（32K、128K token）成为可能，是现代长上下文 LLM 的基础设施。
+  </div>
+</section>
+
+</article>
+</main>
+</div>
+
+<script>
+const DPR=window.devicePixelRatio||1;
+function setup(cv,W,H){
+  cv.width=Math.round(W*DPR);cv.height=Math.round(H*DPR);
+  cv.style.width=W+'px';cv.style.height=H+'px';
+  const ctx=cv.getContext('2d');ctx.scale(DPR,DPR);ctx.clearRect(0,0,W,H);
+  return ctx;
+}
+function rr(ctx,x,y,w,h,r){
+  ctx.beginPath();ctx.moveTo(x+r,y);ctx.lineTo(x+w-r,y);ctx.arcTo(x+w,y,x+w,y+r,r);
+  ctx.lineTo(x+w,y+h-r);ctx.arcTo(x+w,y+h,x+w-r,y+h,r);
+  ctx.lineTo(x+r,y+h);ctx.arcTo(x,y+h,x,y+h-r,r);
+  ctx.lineTo(x,y+r);ctx.arcTo(x,y,x+r,y,r);ctx.closePath();
+}
+
+// ── 1. 内存层次 ───────────────────────────────────
+function drawMem(){
+  const cv=document.getElementById('cMem');
+  const W=cv.parentElement.clientWidth-40,H=160;
+  const ctx=setup(cv,W,H);
+
+  // SRAM
+  ctx.fillStyle='#ECFDF5';ctx.strokeStyle='#10B981';ctx.lineWidth=2;
+  rr(ctx,W/2-100,20,200,50,8);ctx.fill();ctx.stroke();
+  ctx.fillStyle='#10B981';ctx.font='bold 13px sans-serif';ctx.textAlign='center';
+  ctx.fillText('SRAM（片上缓存）',W/2,48);
+  ctx.fillStyle='#9CA3AF';ctx.font='11px sans-serif';
+  ctx.fillText('容量：~20MB / GPU SM  |  带宽：~19TB/s',W/2,64);
+
+  // 箭头
+  ctx.strokeStyle='#9CA3AF';ctx.lineWidth=2;
+  ctx.beginPath();ctx.moveTo(W/2-30,72);ctx.lineTo(W/2-30,96);ctx.stroke();
+  ctx.beginPath();ctx.moveTo(W/2+30,96);ctx.lineTo(W/2+30,72);ctx.stroke();
+  ctx.fillStyle='#9CA3AF';ctx.font='10px sans-serif';ctx.textAlign='left';
+  ctx.fillText('加载',W/2-26,86);ctx.fillText('写回',W/2+34,86);
+
+  // HBM
+  ctx.fillStyle='#FEF2F2';ctx.strokeStyle='#EF4444';ctx.lineWidth=2;
+  rr(ctx,W/2-140,98,280,44,8);ctx.fill();ctx.stroke();
+  ctx.fillStyle='#EF4444';ctx.font='bold 13px sans-serif';ctx.textAlign='center';
+  ctx.fillText('HBM（显存）',W/2,122);
+  ctx.fillStyle='#9CA3AF';ctx.font='11px sans-serif';
+  ctx.fillText('容量：~80GB  |  带宽：~2TB/s（慢 10×）',W/2,138);
+}
+
+// ── 2. 标准 Attention IO ──────────────────────────
+function drawStd(){
+  const cv=document.getElementById('cStd');
+  const W=cv.parentElement.clientWidth-40,H=200;
+  const ctx=setup(cv,W,H);
+
+  const steps=[
+    {label:'① 读 Q,K',color:'#EF4444',io:'HBM→SRAM'},
+    {label:'② 写 S=QKᵀ',color:'#EF4444',io:'SRAM→HBM'},
+    {label:'③ 读 S',color:'#EF4444',io:'HBM→SRAM'},
+    {label:'④ 写 P=softmax(S)',color:'#EF4444',io:'SRAM→HBM'},
+    {label:'⑤ 读 P,V',color:'#EF4444',io:'HBM→SRAM'},
+    {label:'⑥ 写 O=PV',color:'#EF4444',io:'SRAM→HBM'},
+  ];
+  const bw=Math.min((W-40)/steps.length, 90), bh=36, offX=20, offY=60;
+
+  // HBM 条
+  ctx.fillStyle='#FEF2F2';ctx.strokeStyle='#EF444455';ctx.lineWidth=1;
+  ctx.fillRect(0,130,W,50);ctx.strokeRect(0,130,W,50);
+  ctx.fillStyle='#EF4444';ctx.font='bold 11px sans-serif';ctx.textAlign='left';
+  ctx.fillText('HBM',8,160);
+
+  // SRAM 条
+  ctx.fillStyle='#ECFDF5';ctx.strokeStyle='#10B98155';ctx.lineWidth=1;
+  ctx.fillRect(0,30,W,50);ctx.strokeRect(0,30,W,50);
+  ctx.fillStyle='#10B981';ctx.font='bold 11px sans-serif';ctx.textAlign='left';
+  ctx.fillText('SRAM',8,60);
+
+  steps.forEach((s,i)=>{
+    const x=offX+i*(bw+6);
+    const isRead=s.io.startsWith('HBM');
+    // 箭头
+    const y1=isRead?130:80, y2=isRead?80:130;
+    ctx.strokeStyle='#EF4444';ctx.lineWidth=1.5;
+    ctx.beginPath();ctx.moveTo(x+bw/2,y1);ctx.lineTo(x+bw/2,y2);ctx.stroke();
+    const ay=y2, a=isRead?-Math.PI/2:Math.PI/2, hw=6;
+    ctx.fillStyle='#EF4444';ctx.beginPath();
+    ctx.moveTo(x+bw/2,ay);
+    ctx.lineTo(x+bw/2-hw*Math.cos(a-.4),ay-hw*Math.sin(a-.4));
+    ctx.lineTo(x+bw/2-hw*Math.cos(a+.4),ay-hw*Math.sin(a+.4));
+    ctx.closePath();ctx.fill();
+    // 标签
+    ctx.fillStyle='#374151';ctx.font='10px sans-serif';ctx.textAlign='center';
+    ctx.fillText(s.label,x+bw/2,isRead?122:94);
+    ctx.fillStyle='#EF4444';ctx.font='9px monospace';
+    ctx.fillText('O(N²)',x+bw/2,isRead?108:108);
+  });
+
+  ctx.fillStyle='#EF4444';ctx.font='bold 11px sans-serif';ctx.textAlign='center';
+  ctx.fillText('共 4 次 O(N²) HBM 读写',W/2,188);
+}
+
+// ── 3. 分块图 ─────────────────────────────────────
+function drawTile(){
+  const cv=document.getElementById('cTile');
+  const N=+document.getElementById('seqN').value;
+  const B=+document.getElementById('blockB').value;
+  const W=cv.parentElement.clientWidth-40,H=220;
+  const ctx=setup(cv,W,H);
+  const nb=Math.ceil(N/B);
+  const cell=Math.min(Math.floor((Math.min(W,H)-80)/N),22);
+  const ox=(W-N*cell)/2, oy=30;
+
+  // 标签
+  ctx.fillStyle='#9CA3AF';ctx.font='bold 10px sans-serif';ctx.textAlign='center';
+  ctx.fillText('K →',ox+N*cell/2,oy-8);
+  ctx.save();ctx.translate(ox-14,oy+N*cell/2);ctx.rotate(-Math.PI/2);ctx.fillText('Q ↓',0,0);ctx.restore();
+
+  // 完整矩阵背景
+  for(let r=0;r<N;r++){
+    for(let c=0;c<N;c++){
+      const qi=Math.floor(r/B), ki=Math.floor(c/B);
+      // 高亮当前块（第一个Q块和第一个K块）
+      const isActiveQ=qi===0, isActiveK=ki===0;
+      let fill='#F9FAFB';
+      if(isActiveQ&&isActiveK) fill='#F59E0B33';
+      else if(isActiveQ) fill='#3B82F611';
+      else if(isActiveK) fill='#10B98111';
+      ctx.fillStyle=fill;
+      ctx.fillRect(ox+c*cell+1,oy+r*cell+1,cell-2,cell-2);
+      ctx.strokeStyle='#E5E3DF';ctx.lineWidth=0.5;
+      ctx.strokeRect(ox+c*cell+1,oy+r*cell+1,cell-2,cell-2);
+    }
+  }
+
+  // 块边界
+  for(let i=B;i<N;i+=B){
+    ctx.strokeStyle='#9CA3AF';ctx.lineWidth=1.5;ctx.setLineDash([]);
+    ctx.beginPath();ctx.moveTo(ox+i*cell,oy);ctx.lineTo(ox+i*cell,oy+N*cell);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(ox,oy+i*cell);ctx.lineTo(ox+N*cell,oy+i*cell);ctx.stroke();
+  }
+
+  // 当前高亮块边框
+  ctx.strokeStyle='#F59E0B';ctx.lineWidth=2.5;
+  ctx.strokeRect(ox+1,oy+1,B*cell-2,B*cell-2);
+
+  // Q 块标注（左侧）
+  for(let i=0;i<nb;i++){
+    ctx.fillStyle=i===0?'#3B82F6':'#9CA3AF';
+    ctx.font=i===0?'bold 10px sans-serif':'10px sans-serif';
+    ctx.textAlign='right';
+    ctx.fillText(`Q${i}`,ox-4,oy+i*B*cell+B*cell/2+3);
+  }
+  // K 块标注（顶部）
+  for(let j=0;j<nb;j++){
+    ctx.fillStyle=j===0?'#10B981':'#9CA3AF';
+    ctx.font=j===0?'bold 10px sans-serif':'10px sans-serif';
+    ctx.textAlign='center';
+    ctx.fillText(`K${j}`,ox+j*B*cell+B*cell/2,oy-4);
+  }
+
+  // SRAM 示意
+  const sx=ox+N*cell+20, sy=oy;
+  ctx.fillStyle='#ECFDF5';ctx.strokeStyle='#10B981';ctx.lineWidth=1.5;
+  rr(ctx,sx,sy,70,B*cell,6);ctx.fill();ctx.stroke();
+  ctx.fillStyle='#10B981';ctx.font='bold 9px sans-serif';ctx.textAlign='center';
+  ctx.fillText('SRAM',sx+35,sy+B*cell/2-6);
+  ctx.fillStyle='#10B981';ctx.font='9px sans-serif';
+  ctx.fillText('Q₀⊗K₀',sx+35,sy+B*cell/2+6);
+  ctx.fillText('→ O₀ 累加',sx+35,sy+B*cell/2+18);
+
+  ctx.fillStyle='#374151';ctx.font='10px sans-serif';ctx.textAlign='center';
+  ctx.fillText(`N=${N}, B=${B}, 共 ${nb}×${nb} 个块`,W/2,H-6);
+}
+
+// ── 4. Online Softmax ─────────────────────────────
+const SM_VALS=[[3.0, 1.5, -0.5],[4.2, 0.8],[2.1, 3.8, -1.0]];
+let smStep_=0;
+function smReset(){smStep_=0;drawSoftmax();}
+function smStep(d){smStep_=Math.max(0,Math.min(SM_VALS.length,smStep_+d));drawSoftmax();}
+
+function drawSoftmax(){
+  const cv=document.getElementById('cSoftmax');
+  const W=cv.parentElement.clientWidth-40,H=200;
+  const ctx=setup(cv,W,H);
+  const step=smStep_;
+
+  let m=-Infinity,l=0,desc='';
+  const allVals=SM_VALS.slice(0,step).flat();
+  const cellW=28,offX=30,offY=20;
+
+  if(step===0){
+    ctx.fillStyle='#9CA3AF';ctx.font='13px sans-serif';ctx.textAlign='center';
+    ctx.fillText('按「下一步」逐块处理 softmax',W/2,H/2);
+    document.getElementById('smDetail').textContent='等待开始...';
+    return;
+  }
+
+  // 显示已处理的值
+  let cx=offX;
+  SM_VALS.forEach((blk,bi)=>{
+    if(bi>=step) return;
+    ctx.fillStyle='#374151';ctx.font='9px sans-serif';ctx.textAlign='center';
+    ctx.fillText(`块${bi}`,cx+blk.length*cellW/2,offY-4);
+    blk.forEach((v,i)=>{
+      const fill=bi===step-1?'#3B82F644':'#F3F4F6';
+      ctx.fillStyle=fill;
+      rr(ctx,cx+1,offY,cellW-2,28,4);ctx.fill();
+      ctx.strokeStyle=bi===step-1?'#3B82F6':'#E5E3DF';ctx.lineWidth=1;
+      rr(ctx,cx+1,offY,cellW-2,28,4);ctx.stroke();
+      ctx.fillStyle='#374151';ctx.font='bold 11px monospace';ctx.textAlign='center';
+      ctx.fillText(v.toFixed(1),cx+cellW/2,offY+18);
+      cx+=cellW;
+    });
+    cx+=8;
+  });
+
+  // 计算增量 online softmax
+  let m_old=-Infinity,l_old=0;
+  let steps_desc='';
+  SM_VALS.slice(0,step).forEach((blk,bi)=>{
+    const m_new=Math.max(m_old,...blk);
+    const scale=Math.exp(m_old-m_new);
+    const l_new=scale*l_old+blk.reduce((s,v)=>s+Math.exp(v-m_new),0);
+    if(bi===step-1){
+      steps_desc=
+        `处理块 ${bi}: x = [${blk.map(v=>v.toFixed(1)).join(', ')}]\n`+
+        `m_old = ${m_old===(-Infinity)?'-∞':m_old.toFixed(2)}  →  m_new = max(m_old, ${m_new.toFixed(2)}) = ${m_new.toFixed(2)}\n`+
+        `缩放因子 e^(m_old-m_new) = ${scale.toFixed(4)}\n`+
+        `l_old × 缩放 + Σe^(x-m_new) = ${(scale*l_old).toFixed(4)} + ${(l_new-scale*l_old).toFixed(4)} = ${l_new.toFixed(4)}\n`+
+        `当前 softmax 分母 l = ${l_new.toFixed(4)}`;
+    }
+    m_old=m_new;l_old=l_new;
+  });
+
+  // 最终 softmax 条形
+  const bary=80;
+  if(step>0){
+    const vals=SM_VALS.slice(0,step).flat();
+    const m_final=Math.max(...vals);
+    const exps=vals.map(v=>Math.exp(v-m_final));
+    const total=exps.reduce((a,b)=>a+b,0);
+    const probs=exps.map(v=>v/total);
+    const barW=(W-60)/probs.length;
+    ctx.fillStyle='#374151';ctx.font='10px sans-serif';ctx.textAlign='left';
+    ctx.fillText('当前 softmax（仅已处理块）',offX,bary-4);
+    probs.forEach((p,i)=>{
+      const bh=p*60;
+      ctx.fillStyle='#7C3AED44';
+      ctx.fillRect(offX+i*barW+1,bary+60-bh,barW-2,bh);
+      ctx.strokeStyle='#7C3AED';ctx.lineWidth=0.5;
+      ctx.strokeRect(offX+i*barW+1,bary+60-bh,barW-2,bh);
+      ctx.fillStyle='#7C3AED';ctx.font='9px monospace';ctx.textAlign='center';
+      if(bh>10)ctx.fillText(p.toFixed(2),offX+i*barW+barW/2,bary+60-bh-2);
+    });
+    ctx.fillStyle='#374151';ctx.font='10px sans-serif';ctx.textAlign='center';
+    ctx.fillText(`步骤 ${step}/${SM_VALS.length}  |  m=${m_old.toFixed(2)},  l=${l_old.toFixed(4)}`,W/2,H-4);
+  }
+
+  document.getElementById('smDetail').textContent=steps_desc;
+}
+
+// ── 5. Tiling 动画 ────────────────────────────────
+let animRunning=false,animTimer=null,animQi=0,animKi=0,animT=0;
+const ANIM_SPEED=60;
+
+function toggleAnim(){
+  animRunning=!animRunning;
+  const btn=document.getElementById('animBtn');
+  if(animRunning){btn.textContent='⏸ 暂停';btn.classList.add('active');runAnim();}
+  else{btn.textContent='▶ 播放动画';btn.classList.remove('active');if(animTimer)clearInterval(animTimer);}
+}
+
+function runAnim(){
+  if(animTimer)clearInterval(animTimer);
+  animTimer=setInterval(()=>{
+    if(!animRunning)return;
+    const N=+document.getElementById('seqN').value;
+    const B=+document.getElementById('blockB').value;
+    const nb=Math.ceil(N/B);
+    animT+=1;
+    if(animT>ANIM_SPEED){
+      animT=0;animKi++;
+      if(animKi>=nb){animKi=0;animQi++;if(animQi>=nb){animQi=0;}}
+    }
+    drawAnim(animQi,animKi,animT/ANIM_SPEED);
+  },16);
+}
+
+function drawAnim(qi,ki,progress){
+  const cv=document.getElementById('cAnim');
+  const N=+document.getElementById('seqN').value;
+  const B=+document.getElementById('blockB').value;
+  const W=cv.parentElement.clientWidth-40,H=300;
+  const ctx=setup(cv,W,H);
+  const nb=Math.ceil(N/B);
+  const cell=Math.min(Math.floor((Math.min(W/2-40,H-60))/N),20);
+  const matW=N*cell,matH=N*cell;
+  const ox=20,oy=(H-matH)/2;
+
+  // 注意力矩阵（左）
+  ctx.fillStyle='#9CA3AF';ctx.font='bold 10px sans-serif';ctx.textAlign='center';
+  ctx.fillText('注意力矩阵（从不写 HBM）',ox+matW/2,oy-10);
+
+  for(let r=0;r<N;r++){
+    for(let c=0;c<N;c++){
+      const bqi=Math.floor(r/B),bki=Math.floor(c/B);
+      const done=(bqi<qi)||(bqi===qi&&bki<ki);
+      const active=bqi===qi&&bki===ki;
+      let fill='#F9FAFB';
+      if(active) fill=`rgba(245,158,11,${0.2+progress*0.4})`;
+      else if(done) fill='#D1FAE5';
+      ctx.fillStyle=fill;
+      ctx.fillRect(ox+c*cell,oy+r*cell,cell,cell);
+      ctx.strokeStyle='#E5E3DF';ctx.lineWidth=0.3;
+      ctx.strokeRect(ox+c*cell,oy+r*cell,cell,cell);
+    }
+  }
+  // 块边界
+  for(let i=B;i<N;i+=B){
+    ctx.strokeStyle='#9CA3AF';ctx.lineWidth=1;ctx.setLineDash([]);
+    ctx.beginPath();ctx.moveTo(ox+i*cell,oy);ctx.lineTo(ox+i*cell,oy+matH);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(ox,oy+i*cell);ctx.lineTo(ox+matW,oy+i*cell);ctx.stroke();
+  }
+  // 当前块高亮
+  ctx.strokeStyle='#F59E0B';ctx.lineWidth=2;
+  ctx.strokeRect(ox+ki*B*cell,oy+qi*B*cell,B*cell,B*cell);
+
+  // SRAM 区（右）
+  const sx=ox+matW+30,sw=Math.min(100,W-sx-10),sh=H-40;
+  ctx.fillStyle='#ECFDF5';ctx.strokeStyle='#10B981';ctx.lineWidth=1.5;
+  rr(ctx,sx,20,sw,sh,8);ctx.fill();ctx.stroke();
+  ctx.fillStyle='#10B981';ctx.font='bold 11px sans-serif';ctx.textAlign='center';
+  ctx.fillText('SRAM',sx+sw/2,38);
+
+  // SRAM 内容
+  const blockH=(sh-30)/3;
+  [['Q_'+qi,'#3B82F6'],['K_'+ki,'#10B981'],['O_'+qi+'(累加)','#7C3AED']].forEach(([lbl,col],i)=>{
+    const by=44+i*blockH;
+    ctx.fillStyle=col+'22';ctx.strokeStyle=col;ctx.lineWidth=1;
+    ctx.fillRect(sx+8,by,sw-16,blockH-6);
+    ctx.strokeRect(sx+8,by,sw-16,blockH-6);
+    ctx.fillStyle=col;ctx.font='bold 10px sans-serif';ctx.textAlign='center';
+    ctx.fillText(lbl,sx+sw/2,by+blockH/2+3);
+  });
+
+  // 进度信息
+  const total=nb*nb, done2=qi*nb+ki;
+  ctx.fillStyle='#374151';ctx.font='10px sans-serif';ctx.textAlign='center';
+  ctx.fillText(`Q块 ${qi}/${nb-1} × K块 ${ki}/${nb-1}  |  进度 ${done2}/${total}`,W/2,H-8);
+
+  document.getElementById('animCaption').textContent=
+    `正在处理 Q₍${qi}₎ × K₍${ki}₎ → 累加到输出 O₍${qi}₎，不写 HBM`;
+}
+
+// ── 6. 复杂度对比 ─────────────────────────────────
+function drawCmp(){
+  const cv=document.getElementById('cCmp');
+  const W=cv.parentElement.clientWidth-40,H=200;
+  const ctx=setup(cv,W,H);
+  const pL=55,pR=20,pT=20,pB=36,pW=W-pL-pR,pH=H-pT-pB;
+  const ns=[64,128,256,512,1024,2048];
+  const M=1024; // SRAM 大小（归一化）
+
+  const stdIO=ns.map(n=>n*n);
+  const flashIO=ns.map(n=>n*n/M*10); // 简化
+  const maxVal=Math.max(...stdIO);
+
+  ctx.strokeStyle='#E5E3DF';ctx.lineWidth=0.5;
+  [0,.25,.5,.75,1].forEach(v=>{
+    ctx.beginPath();ctx.moveTo(pL,pT+pH*(1-v));ctx.lineTo(pL+pW,pT+pH*(1-v));ctx.stroke();
+  });
+
+  [[stdIO,'#EF4444','标准 O(N²)'],[flashIO,'#10B981','Flash O(N²d/M)']].forEach(([data,col,lbl])=>{
+    ctx.strokeStyle=col;ctx.lineWidth=2;ctx.lineCap='round';
+    ctx.beginPath();
+    data.forEach((v,i)=>{
+      const x=pL+i/(ns.length-1)*pW,y=pT+pH*(1-Math.min(v/maxVal,1));
+      i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
+    });
+    ctx.stroke();ctx.lineCap='butt';
+    ctx.fillStyle=col;ctx.font='10px sans-serif';ctx.textAlign='left';
+    const last=data[data.length-1],lx=pL+pW,ly=pT+pH*(1-Math.min(last/maxVal,1));
+    ctx.fillText(lbl,lx-60,ly-5);
+  });
+
+  ctx.fillStyle='#9CA3AF';ctx.font='10px monospace';ctx.textAlign='right';
+  [0,.25,.5,.75,1].forEach(v=>ctx.fillText((v*maxVal/1e6).toFixed(1)+'M',pL-4,pT+pH*(1-v)+3));
+  ctx.textAlign='center';
+  ns.forEach((n,i)=>ctx.fillText(n,pL+i/(ns.length-1)*pW,pT+pH+16));
+  ctx.fillStyle='#9CA3AF';ctx.font='11px sans-serif';
+  ctx.save();ctx.translate(14,H/2);ctx.rotate(-Math.PI/2);ctx.textAlign='center';ctx.fillText('HBM IO',0,0);ctx.restore();
+  ctx.textAlign='center';ctx.fillText('序列长度 N',W/2,H);
+}
+
+function redraw(){
+  document.getElementById('seqNVal').textContent=document.getElementById('seqN').value;
+  document.getElementById('blockBVal').textContent=document.getElementById('blockB').value;
+  drawMem();drawStd();drawTile();drawSoftmax();drawAnim(animQi,animKi,animT/ANIM_SPEED);drawCmp();
+}
+window.addEventListener('resize',redraw);
+smReset();redraw();
+</script>
+</body>
+</html>
