@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI & Algorithm Visualizer</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #0f1117; color: #e0e0e0; font-family: 'Segoe UI', sans-serif; min-height: 100vh; padding: 40px 24px; }
+
+  .header { text-align: center; margin-bottom: 48px; }
+  .header h1 { font-size: 2rem; color: #7eb8f7; letter-spacing: 3px; margin-bottom: 8px; }
+  .header p { color: #6b7280; font-size: 0.9rem; }
+
+  .section { margin-bottom: 40px; }
+  .section-title {
+    font-size: 0.75rem; text-transform: uppercase; letter-spacing: 3px;
+    color: #4b5563; border-bottom: 1px solid #1e2130; padding-bottom: 8px; margin-bottom: 20px;
+  }
+
+  .grid { display: flex; flex-wrap: wrap; gap: 16px; }
+
+  .card {
+    background: #161923; border: 1px solid #2a2f45; border-radius: 12px;
+    padding: 20px 24px; width: 240px; text-decoration: none; color: inherit;
+    transition: border-color 0.2s, transform 0.2s, background 0.2s;
+    cursor: pointer;
+  }
+  .card:hover { border-color: #7eb8f7; background: #1a2030; transform: translateY(-2px); }
+
+  .card-icon { font-size: 1.6rem; margin-bottom: 10px; }
+  .card-title { font-size: 0.95rem; color: #e0e0e0; margin-bottom: 6px; font-weight: 600; }
+  .card-desc { font-size: 0.75rem; color: #6b7280; line-height: 1.6; }
+  .card-tag {
+    display: inline-block; margin-top: 10px; padding: 2px 8px;
+    border-radius: 4px; font-size: 0.68rem; font-weight: 500;
+  }
+  .tag-algo { background: #1a3a6a; color: #7eb8f7; }
+  .tag-llm { background: #2d1a4a; color: #c97ee0; }
+  .tag-rec { background: #1a3a2a; color: #4caf7d; }
+  .tag-math { background: #3a2a0a; color: #f0b429; }
+
+  .footer { text-align: center; margin-top: 60px; color: #374151; font-size: 0.75rem; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>AI Visualizer</h1>
+  <p>算法与AI原理可视化合集</p>
+</div>
+
+<div class="section">
+  <div class="section-title">算法</div>
+  <div class="grid">
+    <a class="card" href="index.html">
+      <div class="card-icon">📊</div>
+      <div class="card-title">排序算法</div>
+      <div class="card-desc">冒泡、快排、归并、堆排序等逐步可视化，含代码高亮和变量追踪</div>
+      <span class="card-tag tag-algo">Algorithm</span>
+    </a>
+    <a class="card" href="dp-partition.html">
+      <div class="card-icon">🎒</div>
+      <div class="card-title">0/1 背包 DP</div>
+      <div class="card-desc">416.分割等和子集，二维 DP 填表 vs 一维空间压缩对比可视化</div>
+      <span class="card-tag tag-algo">Algorithm</span>
+    </a>
+  </div>
+</div>
+
+<div class="section">
+  <div class="section-title">大模型 · Transformer</div>
+  <div class="grid">
+    <a class="card" href="positional-encoding.html">
+      <div class="card-icon">📐</div>
+      <div class="card-title">位置编码</div>
+      <div class="card-desc">Sinusoidal PE 向量可视化、维度角频率、2D 旋转几何含义</div>
+      <span class="card-tag tag-llm">LLM</span>
+    </a>
+    <a class="card" href="rope.html">
+      <div class="card-icon">🌀</div>
+      <div class="card-title">RoPE</div>
+      <div class="card-desc">旋转位置编码原理与向量旋转可视化</div>
+      <span class="card-tag tag-llm">LLM</span>
+    </a>
+    <a class="card" href="flashattention.html">
+      <div class="card-icon">⚡</div>
+      <div class="card-title">Flash Attention</div>
+      <div class="card-desc">分块计算与 HBM/SRAM 内存访问模式可视化</div>
+      <span class="card-tag tag-llm">LLM</span>
+    </a>
+    <a class="card" href="jagged-attention.html">
+      <div class="card-icon">🗂️</div>
+      <div class="card-title">Jagged Attention</div>
+      <div class="card-desc">推荐系统不定长序列的 Jagged Tensor Attention</div>
+      <span class="card-tag tag-rec">Rec</span>
+    </a>
+    <a class="card" href="rmsnorm.html">
+      <div class="card-icon">📏</div>
+      <div class="card-title">RMSNorm</div>
+      <div class="card-desc">RMSNorm vs LayerNorm 归一化对比可视化</div>
+      <span class="card-tag tag-llm">LLM</span>
+    </a>
+    <a class="card" href="swiglu.html">
+      <div class="card-icon">🔀</div>
+      <div class="card-title">SwiGLU</div>
+      <div class="card-desc">SwiGLU 激活函数与 FFN 结构可视化</div>
+      <span class="card-tag tag-llm">LLM</span>
+    </a>
+    <a class="card" href="ppo-rlhf.html">
+      <div class="card-icon">🤖</div>
+      <div class="card-title">PPO / RLHF</div>
+      <div class="card-desc">强化学习人类反馈训练流程与 PPO 算法可视化</div>
+      <span class="card-tag tag-llm">LLM</span>
+    </a>
+  </div>
+</div>
+
+<div class="footer">
+  <p>Li-Mingshuang / ai-visualizer &nbsp;·&nbsp; GitHub Pages</p>
+</div>
+
+</body>
+</html>

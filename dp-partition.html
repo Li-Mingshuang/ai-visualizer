@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<title>416. 分割等和子集 - DP 可视化</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'SF Mono', 'Consolas', monospace; background: #1a1a2e; color: #e0e0e0; padding: 24px; }
+  h1 { text-align: center; color: #a78bfa; margin-bottom: 8px; font-size: 20px; }
+  .subtitle { text-align: center; color: #6b7280; margin-bottom: 28px; font-size: 13px; }
+
+  .controls { display: flex; gap: 12px; justify-content: center; align-items: center; margin-bottom: 24px; flex-wrap: wrap; }
+  .controls label { color: #9ca3af; font-size: 13px; }
+  .controls input { background: #2d2d4e; border: 1px solid #4b5563; color: #e0e0e0; padding: 6px 10px; border-radius: 6px; font-size: 13px; width: 180px; }
+  button { background: #7c3aed; color: white; border: none; padding: 8px 18px; border-radius: 6px; cursor: pointer; font-size: 13px; transition: background 0.2s; }
+  button:hover { background: #6d28d9; }
+  button:disabled { background: #374151; cursor: not-allowed; }
+  .btn-secondary { background: #374151; }
+  .btn-secondary:hover { background: #4b5563; }
+
+  .step-info { text-align: center; margin-bottom: 20px; }
+  .step-badge { display: inline-block; background: #2d2d4e; border: 1px solid #4b5563; border-radius: 8px; padding: 8px 20px; font-size: 13px; color: #a78bfa; }
+
+  .container { display: flex; gap: 24px; justify-content: center; flex-wrap: wrap; }
+
+  .panel { background: #16213e; border: 1px solid #2d2d4e; border-radius: 12px; padding: 20px; flex: 1; min-width: 340px; max-width: 560px; }
+  .panel h2 { font-size: 14px; color: #60a5fa; margin-bottom: 6px; }
+  .panel .desc { font-size: 12px; color: #6b7280; margin-bottom: 16px; line-height: 1.6; }
+
+  /* 二维表格 */
+  .table-wrap { overflow-x: auto; }
+  table { border-collapse: collapse; font-size: 12px; }
+  th { background: #2d2d4e; color: #9ca3af; padding: 6px 10px; text-align: center; border: 1px solid #374151; }
+  td { width: 36px; height: 32px; text-align: center; border: 1px solid #374151; transition: background 0.3s, color 0.3s; font-size: 12px; }
+  td.val-true { background: #065f46; color: #6ee7b7; font-weight: bold; }
+  td.val-false { background: #1f2937; color: #4b5563; }
+  td.current { background: #7c3aed !important; color: white !important; outline: 2px solid #a78bfa; }
+  td.source { background: #1e40af !important; color: #93c5fd !important; }
+
+  /* 一维数组 */
+  .arr-wrap { display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 12px; }
+  .arr-cell { width: 40px; height: 40px; display: flex; flex-direction: column; align-items: center; justify-content: center; border-radius: 6px; border: 1px solid #374151; font-size: 11px; transition: background 0.3s; }
+  .arr-cell .idx { color: #6b7280; font-size: 10px; }
+  .arr-cell .val { font-weight: bold; }
+  .arr-cell.val-true { background: #065f46; color: #6ee7b7; border-color: #059669; }
+  .arr-cell.val-false { background: #1f2937; color: #4b5563; }
+  .arr-cell.current { background: #7c3aed; color: white; border-color: #a78bfa; }
+  .arr-cell.source { background: #1e40af; color: #93c5fd; border-color: #3b82f6; }
+
+  .num-highlight { display: inline-block; background: #78350f; color: #fcd34d; padding: 2px 8px; border-radius: 4px; font-weight: bold; margin: 0 4px; }
+  .log { background: #0f172a; border-radius: 8px; padding: 12px; font-size: 11px; color: #6b7280; line-height: 1.8; max-height: 120px; overflow-y: auto; margin-top: 12px; }
+  .log .entry { color: #9ca3af; }
+  .log .entry.active { color: #a78bfa; }
+
+  .legend { display: flex; gap: 16px; margin-top: 12px; flex-wrap: wrap; }
+  .legend-item { display: flex; align-items: center; gap: 6px; font-size: 11px; color: #6b7280; }
+  .legend-dot { width: 12px; height: 12px; border-radius: 3px; }
+
+  .result { text-align: center; margin-top: 16px; padding: 10px; border-radius: 8px; font-size: 14px; font-weight: bold; }
+  .result.true { background: #065f46; color: #6ee7b7; }
+  .result.false { background: #7f1d1d; color: #fca5a5; }
+
+  .speed-wrap { display: flex; align-items: center; gap: 8px; }
+  input[type=range] { width: 80px; accent-color: #7c3aed; }
+</style>
+</head>
+<body>
+
+<h1>416. 分割等和子集 — DP 对比可视化</h1>
+<p class="subtitle">nums = [1, 5, 11, 5] &nbsp;|&nbsp; target = 11</p>
+
+<div class="controls">
+  <div>
+    <label>自定义 nums（逗号分隔）：</label>
+    <input type="text" id="numsInput" value="1,5,11,5" placeholder="如 1,5,11,5">
+  </div>
+  <button onclick="init()">重置</button>
+  <button id="prevBtn" class="btn-secondary" onclick="stepBack()" disabled>← 上一步</button>
+  <button id="nextBtn" onclick="stepForward()">下一步 →</button>
+  <button id="autoBtn" onclick="toggleAuto()">▶ 自动播放</button>
+  <div class="speed-wrap">
+    <label style="font-size:12px;color:#6b7280">速度</label>
+    <input type="range" id="speedRange" min="100" max="1500" value="600" step="100">
+  </div>
+</div>
+
+<div class="step-info">
+  <div class="step-badge" id="stepLabel">点击「下一步」开始</div>
+</div>
+
+<div class="container">
+  <!-- 二维 DP -->
+  <div class="panel">
+    <h2>二维 DP（标准填表）</h2>
+    <p class="desc">
+      dp[i][j] = 前 j 个数能否凑出和 i<br>
+      转移：dp[i][j] = dp[i][j-1] OR dp[i-nums[j-1]][j-1]<br>
+      <span style="color:#fcd34d">从左到右、从上到下</span>填表，用上一列的值。
+    </p>
+    <div class="table-wrap" id="table2d"></div>
+    <div class="legend">
+      <div class="legend-item"><div class="legend-dot" style="background:#065f46"></div>True（可达）</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#1f2937;border:1px solid #374151"></div>False（不可达）</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#7c3aed"></div>当前格</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#1e40af"></div>来源格</div>
+    </div>
+    <div class="log" id="log2d"></div>
+  </div>
+
+  <!-- 一维 DP -->
+  <div class="panel">
+    <h2>一维 DP（空间压缩）</h2>
+    <p class="desc">
+      dp[i] = 当前能否凑出和 i<br>
+      转移：dp[i] = dp[i] OR dp[i-num]<br>
+      <span style="color:#fcd34d">从大到小遍历</span>，防止同一数字重复使用。
+    </p>
+    <div style="margin-bottom:8px;font-size:12px;color:#9ca3af">当前处理数字：<span id="cur1d" class="num-highlight">—</span></div>
+    <div class="arr-wrap" id="arr1d"></div>
+    <div class="legend">
+      <div class="legend-item"><div class="legend-dot" style="background:#065f46;border:1px solid #059669"></div>True（可达）</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#1f2937;border:1px solid #374151"></div>False</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#7c3aed"></div>当前更新格 i</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#1e40af"></div>来源格 i-num</div>
+    </div>
+    <div class="log" id="log1d"></div>
+  </div>
+</div>
+
+<div class="result" id="resultBox" style="display:none"></div>
+
+<script>
+let nums = [], target = 0, n = 0;
+let steps2d = [], steps1d = [];
+let cur = 0;
+let autoTimer = null;
+
+function init() {
+  const raw = document.getElementById('numsInput').value;
+  nums = raw.split(',').map(s => parseInt(s.trim())).filter(x => !isNaN(x) && x > 0);
+  if (nums.length === 0) { alert('请输入有效的正整数数组'); return; }
+  const total = nums.reduce((a, b) => a + b, 0);
+  if (total % 2 !== 0) {
+    document.getElementById('stepLabel').textContent = 'sum 为奇数，直接返回 False';
+    document.getElementById('resultBox').style.display = 'block';
+    document.getElementById('resultBox').className = 'result false';
+    document.getElementById('resultBox').textContent = '结果：False（sum 为奇数）';
+    return;
+  }
+  target = total / 2;
+  n = nums.length;
+  document.querySelector('.subtitle').textContent = `nums = [${nums}]  |  target = ${target}`;
+
+  buildSteps2d();
+  buildSteps1d();
+  cur = 0;
+  stopAuto();
+  document.getElementById('resultBox').style.display = 'none';
+  document.getElementById('prevBtn').disabled = true;
+  document.getElementById('nextBtn').disabled = false;
+  document.getElementById('stepLabel').textContent = `共 ${steps2d.length} 步，点击「下一步」开始`;
+  render();
+}
+
+/* ===== 二维 DP 步骤生成 ===== */
+function buildSteps2d() {
+  steps2d = [];
+  // dp[i][j]: i=0..target, j=0..n
+  const dp = Array.from({length: target+1}, () => new Array(n+1).fill(false));
+  for (let j = 0; j <= n; j++) dp[0][j] = true;
+
+  // 初始步
+  steps2d.push({ dp: deepCopy(dp), cur: null, src: [], msg: '初始化：dp[0][*] = True（和为0无论选几个数都可以）' });
+
+  for (let j = 1; j <= n; j++) {
+    for (let i = 1; i <= target; i++) {
+      const prev = dp[i][j-1];
+      let fromSrc = false;
+      let srcCells = [[i, j-1]];
+      if (i - nums[j-1] >= 0) {
+        srcCells.push([i - nums[j-1], j-1]);
+        fromSrc = dp[i - nums[j-1]][j-1];
+      }
+      dp[i][j] = prev || fromSrc;
+      const val = dp[i][j];
+      let msg = `处理 nums[${j-1}]=${nums[j-1]}，填 dp[${i}][${j}]：`;
+      msg += `dp[${i}][${j-1}]=${prev?1:0}`;
+      if (i - nums[j-1] >= 0) msg += ` OR dp[${i-nums[j-1]}][${j-1}]=${fromSrc?1:0}`;
+      msg += ` → ${val?1:0}`;
+      steps2d.push({ dp: deepCopy(dp), cur: [i,j], src: srcCells, msg });
+    }
+  }
+}
+
+/* ===== 一维 DP 步骤生成 ===== */
+function buildSteps1d() {
+  steps1d = [];
+  const dp = new Array(target+1).fill(false);
+  dp[0] = true;
+
+  steps1d.push({ dp: [...dp], curNum: null, curI: null, srcI: null, msg: '初始化：dp[0] = True' });
+
+  for (let num of nums) {
+    for (let i = target; i >= num; i--) {
+      const before = dp[i];
+      const src = dp[i - num];
+      dp[i] = dp[i] || dp[i - num];
+      let msg = `num=${num}，从大到小，i=${i}：dp[${i}]=${before?1:0} OR dp[${i}-${num}=dp[${i-num}]]=${src?1:0} → ${dp[i]?1:0}`;
+      steps1d.push({ dp: [...dp], curNum: num, curI: i, srcI: i-num, msg });
+    }
+    // 标记处理完一个数字
+    steps1d.push({ dp: [...dp], curNum: num, curI: null, srcI: null, msg: `✅ 处理完 num=${num}` });
+  }
+}
+
+function deepCopy(arr) {
+  return arr.map(row => [...row]);
+}
+
+/* ===== 渲染 ===== */
+function render() {
+  if (steps2d.length === 0) return;
+  const s2 = steps2d[Math.min(cur, steps2d.length-1)];
+  const s1 = steps1d[Math.min(cur, steps1d.length-1)];
+  render2d(s2);
+  render1d(s1);
+  updateLogs();
+  document.getElementById('stepLabel').textContent = `步骤 ${cur} / ${steps2d.length-1}`;
+  document.getElementById('prevBtn').disabled = cur === 0;
+  document.getElementById('nextBtn').disabled = cur >= steps2d.length - 1;
+
+  if (cur === steps2d.length - 1) {
+    const result = s2.dp[target][n];
+    document.getElementById('resultBox').style.display = 'block';
+    document.getElementById('resultBox').className = 'result ' + (result ? 'true' : 'false');
+    document.getElementById('resultBox').textContent = '结果：' + (result ? 'True ✅' : 'False ❌');
+  } else {
+    document.getElementById('resultBox').style.display = 'none';
+  }
+}
+
+function render2d(s) {
+  const dp = s.dp;
+  const curCell = s.cur;
+  const srcCells = s.src || [];
+  const srcSet = new Set(srcCells.map(c => c[0]+','+c[1]));
+
+  let html = '<table>';
+  // 表头
+  html += '<tr><th>i\\j</th>';
+  for (let j = 0; j <= n; j++) html += `<th>j=${j}<br><span style="color:#fcd34d;font-size:10px">${j===0?'∅':('+'+ nums[j-1])}</span></th>`;
+  html += '</tr>';
+
+  for (let i = 0; i <= target; i++) {
+    html += `<tr><th style="background:#1e3a5f;color:#60a5fa">i=${i}</th>`;
+    for (let j = 0; j <= n; j++) {
+      const isCur = curCell && curCell[0]===i && curCell[1]===j;
+      const isSrc = srcSet.has(i+','+j);
+      const val = dp[i][j];
+      let cls = val ? 'val-true' : 'val-false';
+      if (isCur) cls = 'current';
+      else if (isSrc) cls = 'source';
+      html += `<td class="${cls}">${val?'T':'F'}</td>`;
+    }
+    html += '</tr>';
+  }
+  html += '</table>';
+  document.getElementById('table2d').innerHTML = html;
+}
+
+function render1d(s) {
+  const dp = s.dp;
+  document.getElementById('cur1d').textContent = s.curNum !== null ? s.curNum : '—';
+
+  let html = '';
+  for (let i = 0; i <= target; i++) {
+    let cls = dp[i] ? 'val-true' : 'val-false';
+    if (s.curI === i) cls = 'current';
+    else if (s.srcI === i) cls = 'source';
+    html += `<div class="arr-cell ${cls}"><span class="idx">${i}</span><span class="val">${dp[i]?'T':'F'}</span></div>`;
+  }
+  document.getElementById('arr1d').innerHTML = html;
+}
+
+function updateLogs() {
+  const s2 = steps2d[Math.min(cur, steps2d.length-1)];
+  const s1 = steps1d[Math.min(cur, steps1d.length-1)];
+
+  // 显示最近几步
+  let html2 = '', html1 = '';
+  for (let i = Math.max(0, cur-4); i <= Math.min(cur, steps2d.length-1); i++) {
+    const cls = i === cur ? 'active' : '';
+    html2 += `<div class="entry ${cls}">${i===cur?'▶ ':''}${steps2d[i].msg}</div>`;
+  }
+  for (let i = Math.max(0, cur-4); i <= Math.min(cur, steps1d.length-1); i++) {
+    const cls = i === cur ? 'active' : '';
+    html1 += `<div class="entry ${cls}">${i===cur?'▶ ':''}${steps1d[i].msg}</div>`;
+  }
+  document.getElementById('log2d').innerHTML = html2;
+  document.getElementById('log1d').innerHTML = html1;
+  document.getElementById('log2d').scrollTop = 9999;
+  document.getElementById('log1d').scrollTop = 9999;
+}
+
+function stepForward() {
+  if (cur < steps2d.length - 1) { cur++; render(); }
+}
+function stepBack() {
+  if (cur > 0) { cur--; render(); }
+}
+
+function toggleAuto() {
+  if (autoTimer) { stopAuto(); }
+  else {
+    document.getElementById('autoBtn').textContent = '⏸ 暂停';
+    const speed = 1600 - parseInt(document.getElementById('speedRange').value);
+    autoTimer = setInterval(() => {
+      if (cur >= steps2d.length - 1) { stopAuto(); return; }
+      stepForward();
+    }, speed);
+  }
+}
+function stopAuto() {
+  clearInterval(autoTimer);
+  autoTimer = null;
+  document.getElementById('autoBtn').textContent = '▶ 自动播放';
+}
+
+// 初始化
+init();
+</script>
+</body>
+</html>
