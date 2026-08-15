@@ -1,0 +1,893 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>向量量化方法对比可视化</title>
+<script>
+// MathJax config
+window.MathJax = {
+  tex: { inlineMath: [['\\(','\\)'],['$','$']], displayMath: [['\\[','\\]'],['$$','$$']] },
+  svg: { fontCache: 'global' },
+  startup: { typeset: true }
+};
+</script>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg.js" async></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=SF+Pro+Display:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Noto+Sans+SC:wght@400;500;700&display=swap');
+:root {
+  --bg:#f5f5f7; --bg2:#ffffff; --bg3:#f2f2f2; --border:#e0e0e5;
+  --a1:#0071e3; --a2:#ff3b30; --a3:#30b950; --a4:#ff9500;
+  --text:#1d1d1f; --t2:#6e6e73; --t3:#aeaeb2;
+  --radius:18px; --radius-sm:10px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:'Noto Sans SC','SF Pro Display',-apple-system,BlinkMacSystemFont,sans-serif;min-height:100vh;overflow-x:hidden}
+body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellipse 80% 60% at 50% 0%,rgba(0,113,227,.04),transparent);pointer-events:none;z-index:0}
+.wrap{position:relative;z-index:1;max-width:1200px;margin:0 auto;padding:56px 24px}
+header{text-align:center;margin-bottom:52px}
+header h1{font-size:clamp(2rem,4vw,3.2rem);font-weight:700;letter-spacing:-.04em;color:var(--text);margin-bottom:10px;line-height:1.1}
+header h1 span{background:linear-gradient(135deg,#0071e3 0%,#30b950 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+header p{color:var(--t2);font-size:.88rem;font-family:'JetBrains Mono',monospace;letter-spacing:.04em}
+.tabs{display:flex;gap:6px;margin-bottom:36px;justify-content:center;flex-wrap:wrap;background:var(--bg3);border-radius:14px;padding:5px;width:fit-content;margin-left:auto;margin-right:auto}
+.tab{padding:8px 22px;border:none;border-radius:10px;background:transparent;color:var(--t2);cursor:pointer;font-family:'Noto Sans SC',sans-serif;font-size:.85rem;font-weight:500;transition:all .2s;user-select:none}
+.tab:hover{color:var(--text)}
+.tab.a0.active,.tab.a1.active,.tab.a2.active,.tab.a3.active{background:var(--bg2);color:var(--text);box-shadow:0 1px 6px rgba(0,0,0,.08);font-weight:600}
+.panel{display:none;animation:fadeUp .35s ease}
+.panel.active{display:block}
+@keyframes fadeUp{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:translateY(0)}}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:22px;margin-bottom:22px}
+.g3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:22px;margin-bottom:22px}
+@media(max-width:880px){.g2,.g3{grid-template-columns:1fr}}
+.card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:28px;box-shadow:0 2px 12px rgba(0,0,0,.05),0 0 0 .5px rgba(0,0,0,.04);margin-bottom:20px}
+.card-title{font-family:'JetBrains Mono',monospace;font-size:.7rem;letter-spacing:.11em;text-transform:uppercase;color:var(--t3);margin-bottom:16px}
+canvas{width:100%;border-radius:12px;display:block;background:#fafafa;border:1px solid var(--border)}
+.ctrls{display:flex;gap:8px;margin-top:14px;flex-wrap:wrap;align-items:center}
+.btn{padding:7px 16px;border-radius:980px;border:1px solid var(--border);background:var(--bg3);color:var(--text);cursor:pointer;font-family:'Noto Sans SC',sans-serif;font-size:.82rem;font-weight:500;transition:all .15s}
+.btn:hover{background:#e8e8ed;border-color:#c7c7cc}
+.btn.p{background:var(--a1);border-color:var(--a1);color:#fff;font-weight:600}
+.btn.p:hover{background:#0077ed;border-color:#0077ed}
+.btn.p2{background:var(--a2);border-color:var(--a2);color:#fff;font-weight:600}
+.btn.p2:hover{background:#ff453a}
+.btn.p3{background:var(--a3);border-color:var(--a3);color:#fff;font-weight:600}
+.btn.p3:hover{background:#34c759}
+.si{font-family:'JetBrains Mono',monospace;font-size:.76rem;color:var(--t3);margin-left:auto}
+.pb{height:3px;background:var(--border);border-radius:2px;margin-top:10px;overflow:hidden}
+.pf{height:100%;border-radius:2px;transition:width .5s ease}
+.leg{display:flex;gap:14px;flex-wrap:wrap;margin-top:10px}
+.li{display:flex;align-items:center;gap:5px;font-size:.76rem;color:var(--t2);font-family:'JetBrains Mono',monospace}
+.ld{width:9px;height:9px;border-radius:50%;flex-shrink:0}
+.fbox{background:var(--bg3);border:none;border-left:3px solid var(--a1);border-radius:0 var(--radius-sm) var(--radius-sm) 0;padding:14px 18px;margin:12px 0}
+.fbox.r{border-left-color:var(--a2)}
+.fbox.t{border-left-color:var(--a3)}
+.flabel{font-family:'JetBrains Mono',monospace;font-size:.68rem;color:var(--t3);margin-bottom:8px;letter-spacing:.07em}
+.desc{color:var(--t2);font-size:.9rem;line-height:1.9;margin:12px 0}
+.desc strong{color:var(--text)}
+.hl{color:var(--a1);font-weight:600}
+.hlr{color:var(--a2);font-weight:600}
+.hlt{color:var(--a3);font-weight:600}
+.flow{display:flex;align-items:center;gap:0;flex-wrap:wrap;margin:16px 0}
+.fn{background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);padding:8px 14px;font-family:'JetBrains Mono',monospace;font-size:.75rem;color:var(--t2);text-align:center;white-space:nowrap}
+.fn.b{border-color:rgba(0,113,227,.3);color:var(--a1);background:rgba(0,113,227,.06)}
+.fn.r{border-color:rgba(255,59,48,.3);color:var(--a2);background:rgba(255,59,48,.06)}
+.fn.t{border-color:rgba(48,185,80,.3);color:var(--a3);background:rgba(48,185,80,.06)}
+.fa{color:var(--t3);font-size:1rem;padding:0 4px}
+.insight{background:var(--bg3);border:none;border-radius:var(--radius);padding:22px 26px;margin:20px 0}
+.insight-t{font-size:.72rem;font-family:'JetBrains Mono',monospace;color:var(--t3);letter-spacing:.1em;text-transform:uppercase;margin-bottom:10px}
+.insight p{color:var(--t2);font-size:.9rem;line-height:1.9}
+.insight strong{color:var(--text)}
+.ctbl{width:100%;border-collapse:collapse;margin:14px 0}
+.ctbl th,.ctbl td{padding:13px 18px;text-align:left;border-bottom:1px solid var(--border);font-size:.86rem}
+.ctbl th{font-family:'JetBrains Mono',monospace;font-size:.7rem;letter-spacing:.08em;color:var(--t3);text-transform:uppercase;background:var(--bg3)}
+.ctbl td:first-child{color:var(--text);font-weight:600}
+.ctbl tr:last-child td{border-bottom:none}
+.tag{display:inline-block;padding:3px 10px;border-radius:980px;font-family:'JetBrains Mono',monospace;font-size:.7rem;font-weight:500}
+.tg{background:rgba(48,185,80,.1);color:#1a7a31}
+.tb{background:rgba(255,59,48,.08);color:#c0281f}
+.tm{background:rgba(255,149,0,.1);color:#8a5500}
+.cdots{display:flex;gap:7px;flex-wrap:wrap;margin:14px 0}
+.cdot{width:18px;height:18px;border-radius:50%;border:1.5px solid;transition:all .4s}
+.rq-canvases{display:flex;align-items:flex-start;gap:0;margin-bottom:20px;overflow-x:auto;padding:4px 0}
+.rq-panel{flex:1;min-width:180px;background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:14px 14px 10px;box-shadow:0 2px 10px rgba(0,0,0,.04)}
+.rq-panel canvas{width:100%;height:auto;display:block;border-radius:8px;background:#fafafe}
+.rq-panel.active-panel{border-color:var(--a2);box-shadow:0 0 0 2px rgba(255,59,48,.15)}
+.rq-panel.done-panel{border-color:rgba(48,185,80,.4)}
+.rq-label{font-family:'JetBrains Mono',monospace;font-size:.68rem;letter-spacing:.06em;color:var(--t3);margin-bottom:8px;text-transform:uppercase}
+.rq-stat{font-family:'JetBrains Mono',monospace;font-size:.72rem;color:var(--t2);margin-top:8px;min-height:18px}
+.rq-arrow{display:flex;align-items:center;color:var(--t3);font-size:1.4rem;padding:0 8px;padding-top:80px;flex-shrink:0}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <h1><span>向量量化</span>方法对比</h1>
+  <p>VQ-VAE · RQ-VAE · RQ-KMeans — 生成式推荐中的 Item ID 语义编码</p>
+</header>
+
+<div class="tabs">
+  <button class="tab a0 active" data-tab="vqvae">VQ-VAE</button>
+  <button class="tab a1" data-tab="rqvae">RQ-VAE</button>
+  <button class="tab a2" data-tab="rqkmeans">RQ-KMeans</button>
+  <button class="tab a3" data-tab="compare">对比总结</button>
+</div>
+
+<!-- VQ-VAE -->
+<div class="panel active" id="panel-vqvae">
+  <div class="g2">
+    <div class="card">
+      <div class="card-title">量化过程动态演示（观察码本坍缩）</div>
+      <canvas id="cv0" width="500" height="320"></canvas>
+      <div class="ctrls">
+        <button class="btn p" id="b0run">▶ 开始训练</button>
+        <button class="btn" id="b0rst">↺ 重置</button>
+        <span class="si" id="si0">Step 0</span>
+      </div>
+      <div class="pb"><div class="pf" id="pf0" style="width:0%;background:var(--a1)"></div></div>
+      <div class="leg">
+        <div class="li"><div class="ld" style="background:rgba(0,113,227,.8)"></div>数据点 z_e</div>
+        <div class="li"><div class="ld" style="background:rgba(255,149,0,.85)"></div>活跃码字</div>
+        <div class="li"><div class="ld" style="background:transparent;border:1.5px solid #aeaeb2"></div>死亡码字</div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title">原理说明</div>
+      <div class="flow">
+        <div class="fn b">Encoder</div><div class="fa">→</div>
+        <div class="fn b">VQ 量化</div><div class="fa">→</div>
+        <div class="fn b">Decoder</div>
+      </div>
+      <p class="desc">VQ-VAE 在 Encoder 输出 <strong>z_e</strong> 与 Decoder 之间插入<span class="hl">单层向量量化</span>层，将连续向量映射到离散码本中最近的码字 e_k。</p>
+      <div class="fbox">
+        <div class="flabel">量化操作</div>
+        \[ z_q = \arg\min_{e_k \in \mathcal{C}} \| z_e - e_k \| \]
+      </div>
+      <div class="fbox">
+        <div class="flabel">总损失（Straight-Through Estimator）</div>
+        \[ \mathcal{L} = \underbrace{\|x - \hat{x}\|^2}_{\text{重建}} + \underbrace{\|\text{sg}(z_e) - z_q\|^2}_{\text{码本}} + \beta\|z_e - \text{sg}(z_q)\|^2 \]
+      </div>
+      <p class="desc">由于 argmin 不可微，梯度通过 <span class="hl">straight-through</span> 直接从 z_q 复制到 z_e，<span class="hlr">跳过了 VQ 选择步骤</span>——这是 codebook collapse 的根源。</p>
+      <div class="fbox r">
+        <div class="flabel">⚠️ Codebook Collapse 根因</div>
+        \[ \frac{\partial \mathcal{L}}{\partial e_k} = 0 \quad \text{当 } e_k \text{ 未被选中时（死亡码字无梯度）} \]
+      </div>
+    </div>
+  </div>
+  <div class="insight">
+    <div class="insight-t">💡 为什么重建损失救不了坍缩？</div>
+    <p>重建损失的梯度路径：<strong>decoder → straight-through → z_e → 码本损失 → 活跃码字</strong>。死亡码字对重建损失完全透明，梯度永远流不到它们。坍缩的本质是<strong>码字更新机会严重不均等</strong>——活跃码字越来越活跃，死亡码字原地不动，马太效应。</p>
+  </div>
+</div>
+
+<!-- RQ-VAE -->
+<div class="panel" id="panel-rqvae">
+  <div class="card">
+    <div class="card-title">残差量化原理</div>
+    <div class="g2" style="margin-bottom:0">
+      <div>
+        <p class="desc">RQ-VAE 引入<span class="hlr">多层残差量化</span>：第 1 层量化原始向量，后续每层量化上一层的<strong>残差误差</strong>，逐步逼近原始表示。每层在独立的空间中操作，残差分布越来越集中在原点附近。</p>
+        <div class="fbox r">
+          <div class="flabel">第 1 层</div>
+          \[ z_q^{(1)} = \arg\min_{e_k} \| z_e - e_k \|, \quad r_1 = z_e - z_q^{(1)} \]
+        </div>
+        <div class="fbox r">
+          <div class="flabel">第 l 层（l ≥ 2）</div>
+          \[ z_q^{(l)} = \arg\min_{e_k} \| r_{l-1} - e_k \|, \quad r_l = r_{l-1} - z_q^{(l)} \]
+        </div>
+        <div class="fbox r">
+          <div class="flabel">最终 Item ID</div>
+          \[ \text{ID} = (k_1^*, k_2^*, k_3^*) \]
+        </div>
+      </div>
+      <div>
+        <p class="desc">每个 item 获得一个 <span class="hlr">L 级 token 序列</span>，量化精度随层数递增。但每层码本<span class="hlr">独立面临 collapse 风险</span>，多层联合训练更难稳定。</p>
+        <div class="ctrls" style="margin-top:8px">
+          <button class="btn p2" id="b1run">▶ 逐层演示</button>
+          <button class="btn" id="b1rst">↺ 重置</button>
+          <span class="si" id="si1">Layer 0 / 3</span>
+        </div>
+        <div class="pb"><div class="pf" id="pf1" style="width:0%;background:var(--a2)"></div></div>
+        <div class="leg" style="margin-top:12px">
+          <div class="li"><div class="ld" style="background:rgba(0,113,227,.8)"></div>数据点</div>
+          <div class="li"><div class="ld" style="background:rgba(200,110,0,.8)"></div>码字（菱形）</div>
+          <div class="li"><span style="font-size:.75rem;color:var(--t2)">箭头 = 量化分配</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="rq-canvases">
+    <div class="rq-panel" id="rqp0">
+      <div class="rq-label">原始空间 z_e</div>
+      <canvas id="cv1a" width="260" height="220"></canvas>
+      <div class="rq-stat" id="rqs0">等待开始</div>
+    </div>
+    <div class="rq-arrow">→</div>
+    <div class="rq-panel" id="rqp1">
+      <div class="rq-label">L1 残差空间 r₁</div>
+      <canvas id="cv1b" width="260" height="220"></canvas>
+      <div class="rq-stat" id="rqs1">—</div>
+    </div>
+    <div class="rq-arrow">→</div>
+    <div class="rq-panel" id="rqp2">
+      <div class="rq-label">L2 残差空间 r₂</div>
+      <canvas id="cv1c" width="260" height="220"></canvas>
+      <div class="rq-stat" id="rqs2">—</div>
+    </div>
+    <div class="rq-arrow">→</div>
+    <div class="rq-panel" id="rqp3">
+      <div class="rq-label">L3 残差空间 r₃</div>
+      <canvas id="cv1d" width="260" height="220"></canvas>
+      <div class="rq-stat" id="rqs3">—</div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-title">Codebook Collapse 过程模拟（32个码字的活跃度演变）</div>
+    <p class="desc" style="margin-bottom:10px">绿色=活跃，红色=死亡。观察训练过程中码本利用率如何快速下降。</p>
+    <div class="cdots" id="cdots"></div>
+    <div class="ctrls">
+      <button class="btn" id="bcol">▶ 模拟训练</button>
+      <button class="btn" id="brst">↺ 重置</button>
+      <span class="si" id="colinfo">码本利用率: 100%</span>
+    </div>
+  </div>
+  <div class="insight">
+    <div class="insight-t">⚠️ RQ-VAE 的代价</div>
+    <p>理论表达能力最强，但<strong>每一层都可能独立发生 codebook collapse</strong>，实践中需要 EMA 更新、codebook reset、K-Means 预热等多种 trick，工程复杂度高，且与 RQ-KMeans 的效果差距有限。</p>
+  </div>
+</div>
+
+<!-- RQ-KMeans -->
+<div class="panel" id="panel-rqkmeans">
+  <div class="card">
+    <div class="card-title">RQ-KMeans 原理</div>
+    <div class="g2" style="margin-bottom:0">
+      <div>
+        <div class="flow">
+          <div class="fn t">预训练 Encoder<br><small style="color:var(--t3)">固定不训练</small></div>
+          <div class="fa">→</div>
+          <div class="fn t">z_e 稳定分布</div>
+          <div class="fa">→</div>
+          <div class="fn t">K-Means 聚类</div>
+          <div class="fa">→</div>
+          <div class="fn t">L 级 Token</div>
+        </div>
+        <p class="desc"><span class="hlt">固定预训练 Encoder</span>（BERT/CLIP 等），直接在其输出 embedding 上逐层做 K-Means 聚类，<strong>完全不需要梯度反传</strong>。每层对上一层的残差独立聚类。</p>
+        <div class="fbox t">
+          <div class="flabel">K-Means 目标</div>
+          \[ \min_{\mathcal{C}} \sum_{i} \| r_{l-1}^{(i)} - \text{nearest}(r_{l-1}^{(i)}, \mathcal{C}_l) \|^2 \]
+        </div>
+      </div>
+      <div>
+        <p class="desc">K-Means 目标函数<strong>就是量化误差本身</strong>。由于 z_e 分布固定，<span class="hlt">每个聚类中心天然有数据点覆盖</span>，码本利用率接近 100%，无 collapse 问题。</p>
+        <div class="ctrls" style="margin-top:8px">
+          <button class="btn p3" id="b2run">▶ 逐层聚类</button>
+          <button class="btn" id="b2rst">↺ 重置</button>
+          <span class="si" id="si2">Layer 0 / 3</span>
+        </div>
+        <div class="pb"><div class="pf" id="pf2" style="width:0%;background:var(--a3)"></div></div>
+        <div class="leg" style="margin-top:12px">
+          <div class="li"><div class="ld" style="background:rgba(0,113,227,.8)"></div>embedding / 残差点</div>
+          <div class="li"><div class="ld" style="background:rgba(48,185,80,.85);border-radius:3px"></div>K-Means 聚类中心</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="rq-canvases">
+    <div class="rq-panel" id="kmp0">
+      <div class="rq-label">原始空间 z_e</div>
+      <canvas id="cv2a" width="260" height="220"></canvas>
+      <div class="rq-stat" id="kms0">固定（预训练输出）</div>
+    </div>
+    <div class="rq-arrow">→</div>
+    <div class="rq-panel" id="kmp1">
+      <div class="rq-label">L1 残差空间 r₁</div>
+      <canvas id="cv2b" width="260" height="220"></canvas>
+      <div class="rq-stat" id="kms1">—</div>
+    </div>
+    <div class="rq-arrow">→</div>
+    <div class="rq-panel" id="kmp2">
+      <div class="rq-label">L2 残差空间 r₂</div>
+      <canvas id="cv2c" width="260" height="220"></canvas>
+      <div class="rq-stat" id="kms2">—</div>
+    </div>
+    <div class="rq-arrow">→</div>
+    <div class="rq-panel" id="kmp3">
+      <div class="rq-label">L3 残差空间 r₃</div>
+      <canvas id="cv2d" width="260" height="220"></canvas>
+      <div class="rq-stat" id="kms3">—</div>
+    </div>
+  </div>
+  <div class="insight">
+    <div class="insight-t">💡 核心洞察：换空间是手段，不是目的</div>
+    <p>当预训练 embedding 已是<strong>高质量低维连续语义空间</strong>时，encoder 换空间带来的收益接近零，引入的训练风险反而更大。<strong>RQ-KMeans 是"去掉 decoder、固定 encoder、直接最小化量化误差"的极简 RQ-VAE</strong>，在推荐场景中目标更直接、训练更稳定、工程更友好。</p>
+  </div>
+</div>
+
+<!-- 对比总结 -->
+<div class="panel" id="panel-compare">
+  <div class="card">
+    <div class="card-title">三方法全面对比</div>
+    <table class="ctbl">
+      <thead>
+        <tr><th>维度</th><th>VQ-VAE</th><th>RQ-VAE</th><th>RQ-KMeans</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>量化层数</td><td>单层</td><td>多层残差</td><td>多层残差</td></tr>
+        <tr><td>码本学习方式</td><td><span class="tag tm">梯度更新</span></td><td><span class="tag tm">梯度更新</span></td><td><span class="tag tg">K-Means 聚类</span></td></tr>
+        <tr><td>理论表达能力</td><td><span class="tag tb">弱（单层）</span></td><td><span class="tag tg">强（多层）</span></td><td><span class="tag tm">中（多层固定）</span></td></tr>
+        <tr><td>Codebook Collapse</td><td><span class="tag tb">高风险</span></td><td><span class="tag tb">高风险（每层独立）</span></td><td><span class="tag tg">无风险</span></td></tr>
+        <tr><td>码本利用率</td><td><span class="tag tb">低（需 trick）</span></td><td><span class="tag tb">低（需 trick）</span></td><td><span class="tag tg">接近 100%</span></td></tr>
+        <tr><td>训练稳定性</td><td><span class="tag tm">中</span></td><td><span class="tag tb">差</span></td><td><span class="tag tg">极稳定</span></td></tr>
+        <tr><td>工程复杂度</td><td><span class="tag tm">中</span></td><td><span class="tag tb">高</span></td><td><span class="tag tg">低</span></td></tr>
+        <tr><td>编码稳定性</td><td><span class="tag tb">训练中变化</span></td><td><span class="tag tb">训练中变化</span></td><td><span class="tag tg">离线固定</span></td></tr>
+        <tr><td>实际推荐效果</td><td><span class="tag tm">一般</span></td><td><span class="tag tm">相当</span></td><td><span class="tag tg">相当（性价比最高）</span></td></tr>
+        <tr><td>代表工作</td><td>原始 VQ-VAE</td><td>部分 TIGER 变体</td><td>TIGER, LC-Rec</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="g3">
+    <div class="card">
+      <div class="card-title" style="color:var(--a1)">VQ-VAE 适用场景</div>
+      <p class="desc">✅ 原始特征维度极高（如图像像素），需大幅降维<br><br>✅ 任务目标与预训练表示不一致，需任务相关编码<br><br>❌ 单层量化精度不足，不适合推荐场景直接使用</p>
+    </div>
+    <div class="card">
+      <div class="card-title" style="color:var(--a2)">RQ-VAE 适用场景</div>
+      <p class="desc">✅ 原始特征空间结构差（稀疏 ID），需联合学习表示与量化<br><br>✅ 可接受两阶段训练（先预热 encoder）<br><br>❌ 需配合多种 trick 防止 collapse，调参复杂</p>
+    </div>
+    <div class="card">
+      <div class="card-title" style="color:var(--a3)">RQ-KMeans 适用场景</div>
+      <p class="desc">✅ 已有高质量预训练 embedding（BERT/CLIP 等）<br><br>✅ 百万级 item 全量稳定编码<br><br>✅ 工程要求简单、可复现、离线固定<br><br>✅ <strong>推荐场景首选方案</strong></p>
+    </div>
+  </div>
+  <div class="insight">
+    <div class="insight-t">📐 推演路径：从 RQ-VAE 到 RQ-KMeans 的自然推导</div>
+    <p>
+      <strong>问题</strong>：RQ-VAE 训练不稳定（codebook collapse） →
+      <strong>方案1</strong>：两阶段训练，先训 AE 再插 VQ，用 K-Means 初始化码本 →
+      <strong>方案2</strong>：固定预训练 encoder，只训码本和 decoder，z_e 分布稳定 →
+      <strong>方案3（极限）</strong>：去掉 decoder，直接最小化量化误差 →
+      <strong>结论</strong>：这就是 RQ-KMeans。<br><br>
+      K-Means 的目标函数本身就是量化误差，是在<strong>直接优化真正想要的目标</strong>，而 RQ-VAE 通过重建损失间接优化。既然能在同一个空间拟合 embedding 分布，就没必要换个空间拟合——<strong>换空间是手段，不是目的</strong>。
+    </p>
+  </div>
+</div>
+
+</div><!-- /wrap -->
+
+<script>
+// ── 工具 ──────────────────────────────
+function rng(seed){let s=seed;return()=>{s=(s*16807)%2147483647;return(s-1)/2147483646}}
+function lerp(a,b,t){return a+(b-a)*t}
+function dist(a,b){return Math.sqrt((a.x-b.x)**2+(a.y-b.y)**2)}
+function hexRgb(h){return[parseInt(h.slice(1,3),16),parseInt(h.slice(3,5),16),parseInt(h.slice(5,7),16)].join(',')}
+
+// ── Tab 切换 ──────────────────────────
+document.querySelectorAll('.tab').forEach(t=>{
+  t.onclick=()=>{
+    document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));
+    document.querySelectorAll('.panel').forEach(x=>x.classList.remove('active'));
+    t.classList.add('active');
+    document.getElementById('panel-'+t.dataset.tab).classList.add('active');
+    if(window.MathJax) MathJax.typesetPromise();
+  };
+});
+
+// ════════════════════════════════════════
+//  VQ-VAE 演示
+// ════════════════════════════════════════
+;(function(){
+  const cv=document.getElementById('cv0');
+  const ctx=cv.getContext('2d');
+  const W=500,H=320; cv.width=W; cv.height=H;
+  const rand=rng(42);
+  const ND=30,NC=14;
+  let pts=[],cb=[],asgn=[],step=0,maxS=40,run=false,tmr=null;
+
+  function init(){
+    const cl=[{cx:110,cy:95,r:55},{cx:300,cy:75,r:50},{cx:195,cy:220,r:60},{cx:390,cy:195,r:48}];
+    pts=[];
+    for(let i=0;i<ND;i++){const c=cl[i%4];pts.push({x:c.cx+(rand()-.5)*c.r*2,y:c.cy+(rand()-.5)*c.r*2})}
+    cb=[];
+    for(let k=0;k<NC;k++) cb.push({x:30+rand()*440,y:30+rand()*260,tx:0,ty:0,alive:true,usage:0});
+    asgn=new Array(ND).fill(-1); step=0;
+  }
+
+  function assign(){
+    for(let i=0;i<ND;i++){let b=-1,bd=1e9;cb.forEach((c,k)=>{if(!c.alive)return;const d=dist(pts[i],c);if(d<bd){bd=d;b=k;}});asgn[i]=b;}
+  }
+
+  function updateCB(){
+    const s=cb.map(()=>({x:0,y:0,n:0}));
+    for(let i=0;i<ND;i++){const k=asgn[i];if(k<0)continue;s[k].x+=pts[i].x;s[k].y+=pts[i].y;s[k].n++;}
+    cb.forEach((c,k)=>{c.usage=s[k].n;if(s[k].n>0){c.alive=true;c.tx=s[k].x/s[k].n;c.ty=s[k].y/s[k].n;}else{c.alive=false;c.tx=c.x;c.ty=c.y;}});
+  }
+
+  let at=0;
+  function animStep(cb2){
+    at=0;
+    const tick=()=>{
+      at=Math.min(at+.07,1);draw(at);
+      if(at<1)requestAnimationFrame(tick);else cb2&&cb2();
+    };requestAnimationFrame(tick);
+  }
+
+  function draw(t=1){
+    ctx.clearRect(0,0,W,H);
+    ctx.fillStyle='#fafafa';ctx.fillRect(0,0,W,H);
+    if(step>0){
+      for(let i=0;i<ND;i++){
+        const k=asgn[i];if(k<0)continue;
+        const c=cb[k];
+        const cx2=lerp(c.x,c.tx,t),cy2=lerp(c.y,c.ty,t);
+        ctx.strokeStyle=`rgba(255,107,107,${c.alive?.15:.04})`;ctx.lineWidth=.7;
+        ctx.beginPath();ctx.moveTo(pts[i].x,pts[i].y);ctx.lineTo(cx2,cy2);ctx.stroke();
+      }
+    }
+    // data
+    pts.forEach((p,i)=>{
+      const k=asgn[i];const al=k>=0&&cb[k]&&cb[k].alive;
+      ctx.beginPath();ctx.arc(p.x,p.y,5,0,Math.PI*2);
+      ctx.fillStyle=al?'rgba(0,113,227,.85)':'rgba(0,113,227,.2)';ctx.fill();
+    });
+    // codebook
+    cb.forEach((c,k)=>{
+      const nx=lerp(c.x,c.tx,t),ny=lerp(c.y,c.ty,t);
+      if(c.alive){
+        const ii=Math.min(1,c.usage/6);
+        ctx.beginPath();ctx.arc(nx,ny,8,0,Math.PI*2);
+        ctx.fillStyle=`rgba(255,149,0,${.3+ii*.6})`;ctx.strokeStyle=`rgba(200,110,0,${.7+ii*.3})`;ctx.lineWidth=2;ctx.fill();ctx.stroke();
+        if(c.usage>0){ctx.font='10px JetBrains Mono';ctx.fillStyle='rgba(140,80,0,.9)';ctx.fillText(c.usage,nx+9,ny+4);}
+      } else {
+        ctx.beginPath();ctx.arc(nx,ny,7,0,Math.PI*2);ctx.strokeStyle='rgba(174,174,178,.6)';ctx.lineWidth=1.5;ctx.fillStyle='rgba(174,174,178,.1)';ctx.fill();ctx.stroke();
+        ctx.strokeStyle='rgba(255,59,48,.5)';ctx.lineWidth=1.2;
+        ctx.beginPath();ctx.moveTo(nx-5,ny-5);ctx.lineTo(nx+5,ny+5);ctx.stroke();
+        ctx.beginPath();ctx.moveTo(nx+5,ny-5);ctx.lineTo(nx-5,ny+5);ctx.stroke();
+      }
+    });
+    const dead=cb.filter(c=>!c.alive).length;
+    if(step>0){
+      ctx.font='12px JetBrains Mono';
+      ctx.fillStyle=dead>0?'rgba(192,38,28,.9)':'rgba(20,150,60,.9)';
+      ctx.fillText(`死亡码字: ${dead}/${NC}  利用率: ${Math.round((NC-dead)/NC*100)}%`,14,H-12);
+    }
+    if(step===0){
+      ctx.font='13px Noto Sans SC,sans-serif';ctx.fillStyle='rgba(110,110,115,.5)';ctx.textAlign='center';
+      ctx.fillText('点击「开始训练」观察码本坍缩过程',W/2,H/2);ctx.textAlign='left';
+    }
+  }
+
+  function doStep(){
+    if(step>=maxS){stop();document.getElementById('b0run').textContent='▶ 重新开始';return;}
+    assign();updateCB();step++;
+    animStep(()=>{cb.forEach(c=>{if(c.alive){c.x=c.tx;c.y=c.ty;}});
+      document.getElementById('si0').textContent='Step '+step;
+      document.getElementById('pf0').style.width=(step/maxS*100)+'%';
+    });
+  }
+
+  function start(){if(run)return;run=true;tmr=setInterval(doStep,650);}
+  function stop(){run=false;clearInterval(tmr);}
+
+  document.getElementById('b0run').onclick=()=>{
+    if(step>=maxS){reset();setTimeout(start,100);document.getElementById('b0run').textContent='⏸ 暂停';return;}
+    if(run){stop();document.getElementById('b0run').textContent='▶ 继续';}
+    else{start();document.getElementById('b0run').textContent='⏸ 暂停';}
+  };
+  function reset(){stop();init();draw();document.getElementById('si0').textContent='Step 0';document.getElementById('pf0').style.width='0%';}
+  document.getElementById('b0rst').onclick=()=>{reset();document.getElementById('b0run').textContent='▶ 开始训练';};
+  init();draw();
+})();
+
+// ════════════════════════════════════════
+//  RQ-VAE 多面板演示
+//  cv1a=L0原始  cv1b=L1残差  cv1c=L2残差  cv1d=L3残差
+// ════════════════════════════════════════
+;(function(){
+  const W=260,H=220;
+  const cvs=['cv1a','cv1b','cv1c','cv1d'].map(id=>{
+    const c=document.getElementById(id);c.width=W;c.height=H;return c;
+  });
+  const ctxs=cvs.map(c=>c.getContext('2d'));
+  const N=22,LAYERS=3,NCB=7;
+  // 颜色：L0蓝 L1红 L2橙 L3绿
+  const ptCol=['rgba(0,113,227,.8)','rgba(255,59,48,.8)','rgba(255,149,0,.8)','rgba(48,185,80,.8)'];
+  const cbCol=['rgba(0,113,227,','rgba(255,59,48,','rgba(255,149,0,','rgba(48,185,80,'];
+
+  let origRaw=[],cbs=[],residuals=[],step=0,run=false,tmr=null;
+  let rand=rng(99);  // will be re-seeded on reset
+
+  // 把一组点归一化到 canvas 中心周围（适合小画布）
+  function normalize(pts){
+    if(!pts.length) return [];
+    const xs=pts.map(p=>p.x),ys=pts.map(p=>p.y);
+    const mx=(Math.max(...xs)+Math.min(...xs))/2;
+    const my=(Math.max(...ys)+Math.min(...ys))/2;
+    const span=Math.max(Math.max(...xs)-Math.min(...xs),Math.max(...ys)-Math.min(...ys),1);
+    const sc=(Math.min(W,H)-40)/span;
+    return pts.map(p=>({x:(p.x-mx)*sc+W/2,y:(p.y-my)*sc+H/2}));
+  }
+  function normalizeCb(pts,ref){
+    if(!pts.length||!ref.length) return [];
+    const xs=ref.map(p=>p.x),ys=ref.map(p=>p.y);
+    const mx=(Math.max(...xs)+Math.min(...xs))/2;
+    const my=(Math.max(...ys)+Math.min(...ys))/2;
+    const span=Math.max(Math.max(...xs)-Math.min(...xs),Math.max(...ys)-Math.min(...ys),1);
+    const sc=(Math.min(W,H)-40)/span;
+    return pts.map(p=>({x:(p.x-mx)*sc+W/2,y:(p.y-my)*sc+H/2}));
+  }
+
+  function init(){
+    rand=rng(99); // reset seed so data is always identical
+    const cl=[{cx:110,cy:90,r:55},{cx:310,cy:80,r:50},{cx:200,cy:225,r:55},{cx:390,cy:210,r:45}];
+    origRaw=[];
+    for(let i=0;i<N;i++){const c=cl[i%4];origRaw.push({x:c.cx+(rand()-.5)*c.r*2,y:c.cy+(rand()-.5)*c.r*2});}
+    cbs=[];
+    for(let l=0;l<LAYERS;l++){
+      const cb=[];
+      for(let k=0;k<NCB;k++) cb.push({x:40+rand()*420,y:40+rand()*240});
+      cbs.push(cb);
+    }
+    // residuals[0] = 原始点（raw坐标）
+    residuals=[origRaw.map(p=>({...p}))];
+    step=0;
+    ['rqp0','rqp1','rqp2','rqp3'].forEach(id=>document.getElementById(id).className='rq-panel');
+    ['rqs0','rqs1','rqs2','rqs3'].forEach((id,i)=>document.getElementById(id).textContent=i===0?'等待开始':'—');
+  }
+
+  function drawCanvas(ci,pts,cbPts,col,label){
+    const ctx=ctxs[ci];
+    ctx.clearRect(0,0,W,H);ctx.fillStyle='#fafafe';ctx.fillRect(0,0,W,H);
+    // 淡背景圆（暗示分布范围）
+    if(pts.length){
+      const npts=normalize(pts);
+      const ncb=cbPts?normalizeCb(cbPts,pts):null;
+      // 连线
+      if(ncb){
+        const asgn=npts.map((p,_i)=>{
+          const raw=pts[_i];
+          let b=0,bd=1e9;
+          cbPts.forEach((c,k)=>{const d=Math.hypot(raw.x-c.x,raw.y-c.y);if(d<bd){bd=d;b=k;}});
+          return b;
+        });
+        npts.forEach((p,i)=>{
+          const q=ncb[asgn[i]];
+          ctx.strokeStyle=col.replace('rgba','rgba').replace(/[^,)]+\)$/,'.18)');
+          ctx.lineWidth=.8;ctx.beginPath();ctx.moveTo(p.x,p.y);ctx.lineTo(q.x,q.y);ctx.stroke();
+        });
+      }
+      // 数据点
+      npts.forEach(p=>{ctx.beginPath();ctx.arc(p.x,p.y,4,0,Math.PI*2);ctx.fillStyle=col;ctx.fill();});
+      // 码字菱形
+      if(ncb) ncb.forEach(c=>{
+        ctx.beginPath();ctx.moveTo(c.x,c.y-9);ctx.lineTo(c.x+9,c.y);ctx.lineTo(c.x,c.y+9);ctx.lineTo(c.x-9,c.y);ctx.closePath();
+        const fill=col.replace(/[\d.]+\)$/,'.2)');
+        const strk=col.replace(/[\d.]+\)$/,'.95)');
+        ctx.fillStyle=fill;ctx.strokeStyle=strk;ctx.lineWidth=2;ctx.fill();ctx.stroke();
+      });
+    } else {
+      ctx.fillStyle='rgba(110,110,115,.4)';ctx.font='11px Noto Sans SC,sans-serif';ctx.textAlign='center';
+      ctx.fillText('待计算',W/2,H/2);ctx.textAlign='left';
+    }
+    // 标题
+    ctx.fillStyle='rgba(110,110,115,.55)';ctx.font='bold 10px JetBrains Mono';ctx.fillText(label,8,14);
+  }
+
+  function drawAll(){
+    // L0: 原始点
+    drawCanvas(0,residuals[0],step>=1?cbs[0]:null,ptCol[0],'L0');
+    // L1~L3
+    for(let l=1;l<=3;l++){
+      if(step>=l) drawCanvas(l,residuals[l],step>=l+1?cbs[l]:null,ptCol[l],'L'+l);
+      else{
+        ctxs[l].clearRect(0,0,W,H);ctxs[l].fillStyle='#fafafe';ctxs[l].fillRect(0,0,W,H);
+        ctxs[l].fillStyle='rgba(160,160,165,.35)';ctxs[l].font='11px Noto Sans SC,sans-serif';ctxs[l].textAlign='center';
+        ctxs[l].fillText('待计算',W/2,H/2);ctxs[l].textAlign='left';
+      }
+    }
+  }
+
+  function computeLayer(l){
+    const res=residuals[l];
+    const cb=cbs[l];
+    const asgn=res.map(p=>{let b=0,bd=1e9;cb.forEach((c,k)=>{const d=Math.hypot(p.x-c.x,p.y-c.y);if(d<bd){bd=d;b=k;}});return b;});
+    // 残差 = raw差值
+    const nr=res.map((p,i)=>({x:p.x-cb[asgn[i]].x,y:p.y-cb[asgn[i]].y}));
+    residuals.push(nr);
+    // 计算平均残差
+    const avg=nr.reduce((s,p)=>s+Math.hypot(p.x,p.y),0)/nr.length;
+    return avg;
+  }
+
+  function nextL(){
+    if(step>=LAYERS){stop();document.getElementById('b1run').textContent='✓ 完成';return;}
+    // 高亮当前面板
+    const pid='rqp'+step;
+    document.getElementById(pid).classList.add('active-panel');
+    if(step>0) document.getElementById('rqp'+(step-1)).className='rq-panel done-panel';
+    const avg=computeLayer(step);
+    step++;
+    // 更新stat
+    const sids=['rqs0','rqs1','rqs2','rqs3'];
+    const prevAvg=step>=2?residuals[step-1].reduce((s,p)=>s+Math.hypot(p.x,p.y),0)/residuals[step-1].length:null;
+    document.getElementById(sids[step]).textContent=`平均残差: ${avg.toFixed(2)}`;
+    drawAll();
+    document.getElementById('si1').textContent='Layer '+step+' / '+LAYERS;
+    document.getElementById('pf1').style.width=(step/LAYERS*100)+'%';
+    if(step>=LAYERS){
+      stop();document.getElementById('rqp'+LAYERS).className='rq-panel done-panel';
+      document.getElementById('b1run').textContent='✓ 完成';
+    }
+  }
+
+  function start(){if(run)return;run=true;tmr=setInterval(nextL,1600);}
+  function stop(){run=false;clearInterval(tmr);}
+  function reset(){
+    stop();init();drawAll();
+    document.getElementById('si1').textContent='Layer 0 / 3';
+    document.getElementById('pf1').style.width='0%';
+  }
+
+  document.getElementById('b1run').onclick=()=>{
+    if(step>=LAYERS){reset();setTimeout(()=>{start();document.getElementById('b1run').textContent='⏸ 暂停';},100);return;}
+    if(run){stop();document.getElementById('b1run').textContent='▶ 继续';}
+    else{start();document.getElementById('b1run').textContent='⏸ 暂停';}
+  };
+  document.getElementById('b1rst').onclick=()=>{reset();document.getElementById('b1run').textContent='▶ 逐层演示';};
+  init();
+  // 初始只画L0原始点
+  drawCanvas(0,origRaw,null,ptCol[0],'L0');
+  for(let l=1;l<=3;l++){
+    ctxs[l].fillStyle='#fafafe';ctxs[l].fillRect(0,0,W,H);
+    ctxs[l].fillStyle='rgba(160,160,165,.35)';ctxs[l].font='11px Noto Sans SC,sans-serif';ctxs[l].textAlign='center';
+    ctxs[l].fillText('待计算',W/2,H/2);ctxs[l].textAlign='left';
+  }
+})();
+
+// ── Codebook Collapse 模拟 ──
+;(function(){
+  const cont=document.getElementById('cdots');
+  const N=32;let dots=[],tmr=null,run=false,step=0;
+  const rand=rng(55);
+
+  function init(){
+    cont.innerHTML='';dots=[];
+    for(let i=0;i<N;i++){
+      const d=document.createElement('div');d.className='cdot';
+      d.style.cssText='background:rgba(48,185,80,.7);border-color:rgba(48,185,80,.9);';
+      cont.appendChild(d);dots.push({el:d,alive:true,usage:.1+rand()*.9});
+    }
+  }
+
+  function simStep(){
+    step++;
+    dots.forEach(d=>{
+      if(!d.alive)return;
+      if(d.usage<.4&&rand()<.22){
+        d.alive=false;
+        d.el.style.cssText='background:rgba(255,59,48,.12);border-color:rgba(255,59,48,.35);transform:scale(.6);';
+      } else {
+        d.usage=Math.min(1,d.usage*(1+rand()*.12));
+        const ii=d.usage;
+        d.el.style.background=`rgba(48,185,80,${.25+ii*.7})`;
+        d.el.style.borderColor=`rgba(48,185,80,${.5+ii*.5})`;
+      }
+    });
+    const alive=dots.filter(d=>d.alive).length;
+    document.getElementById('colinfo').textContent=`码本利用率: ${Math.round(alive/N*100)}%  (Step ${step})`;
+    if(alive<=Math.floor(N*.28))stop();
+  }
+
+  function start(){if(run)return;run=true;tmr=setInterval(simStep,300);}
+  function stop(){run=false;clearInterval(tmr);}
+  function reset(){stop();step=0;init();document.getElementById('colinfo').textContent='码本利用率: 100%';}
+
+  document.getElementById('bcol').onclick=()=>{
+    if(run){stop();document.getElementById('bcol').textContent='▶ 继续模拟';}
+    else{start();document.getElementById('bcol').textContent='⏸ 暂停';}
+  };
+  document.getElementById('brst').onclick=()=>{reset();document.getElementById('bcol').textContent='▶ 模拟训练';};
+  init();
+})();
+
+// ════════════════════════════════════════
+//  RQ-KMeans 多面板演示
+//  cv2a=L0原始  cv2b=L1残差  cv2c=L2残差  cv2d=L3残差
+//  每个面板独立跑若干轮 K-Means 聚类，然后切下一个面板
+// ════════════════════════════════════════
+;(function(){
+  const W=260,H=220;
+  const cvs=['cv2a','cv2b','cv2c','cv2d'].map(id=>{
+    const c=document.getElementById(id);c.width=W;c.height=H;return c;
+  });
+  const ctxs=cvs.map(c=>c.getContext('2d'));
+   const N=36,K=5,LAYERS=3;
+  const clrRgb=['0,113,227','255,59,48','255,149,0','48,185,80','88,86,214'];
+
+   let origRaw=[],panelData=[],layerStep=0,run=false,tmr=null;
+  let rand=rng(77);
+
+  // ── normalize同上 ──
+  function normalize(pts){
+    if(!pts.length) return pts;
+    const xs=pts.map(p=>p.x),ys=pts.map(p=>p.y);
+    const mx=(Math.max(...xs)+Math.min(...xs))/2;
+    const my=(Math.max(...ys)+Math.min(...ys))/2;
+    const span=Math.max(Math.max(...xs)-Math.min(...xs),Math.max(...ys)-Math.min(...ys),1);
+    const sc=(Math.min(W,H)-40)/span;
+    return pts.map(p=>({x:(p.x-mx)*sc+W/2,y:(p.y-my)*sc+H/2}));
+  }
+  function normRef(pts,ref){
+    if(!pts.length||!ref.length) return pts;
+    const xs=ref.map(p=>p.x),ys=ref.map(p=>p.y);
+    const mx=(Math.max(...xs)+Math.min(...xs))/2;
+    const my=(Math.max(...ys)+Math.min(...ys))/2;
+    const span=Math.max(Math.max(...xs)-Math.min(...xs),Math.max(...ys)-Math.min(...ys),1);
+    const sc=(Math.min(W,H)-40)/span;
+    return pts.map(p=>({x:(p.x-mx)*sc+W/2,y:(p.y-my)*sc+H/2}));
+  }
+
+  function init(){
+    rand=rng(77); // reset seed
+    const cl=[{cx:100,cy:80,r:55},{cx:300,cy:75,r:50},{cx:180,cy:210,r:50},{cx:370,cy:200,r:45},{cx:230,cy:140,r:38}];
+    origRaw=[];
+    for(let i=0;i<N;i++){const c=cl[i%5];origRaw.push({x:c.cx+(rand()-.5)*c.r*2,y:c.cy+(rand()-.5)*c.r*2});}
+    panelData=[];
+    // 每个面板：{ pts(raw), cts(raw), asgn, iter }
+    let curPts=origRaw.map(p=>({...p}));
+    for(let l=0;l<=LAYERS;l++){
+      // 随机初始化聚类中心（在pts范围内）
+      const xs=curPts.map(p=>p.x),ys=curPts.map(p=>p.y);
+      const mnx=Math.min(...xs),mxx=Math.max(...xs),mny=Math.min(...ys),mxy=Math.max(...ys);
+      const cts=[];
+      for(let k=0;k<K;k++) cts.push({x:mnx+rand()*(mxx-mnx),y:mny+rand()*(mxy-mny)});
+      panelData.push({pts:curPts.map(p=>({...p})),cts,asgn:new Array(curPts.length).fill(0),iter:0,converged:false,residuals:null});
+      // 先提前算完聚类，留着待画
+      const snapshots=[];
+      let tmpCts=cts.map(c=>({...c}));
+      let tmpAsgn=new Array(curPts.length).fill(0);
+      for(let it=0;it<20;it++){
+        // assign
+        curPts.forEach((p,i)=>{let b=0,bd=1e9;tmpCts.forEach((c,k)=>{const d=Math.hypot(p.x-c.x,p.y-c.y);if(d<bd){bd=d;b=k;}});tmpAsgn[i]=b;});
+        snapshots.push({cts:tmpCts.map(c=>({...c})),asgn:[...tmpAsgn]});
+        // update
+        const s=tmpCts.map(()=>({x:0,y:0,n:0}));
+        curPts.forEach((p,i)=>{s[tmpAsgn[i]].x+=p.x;s[tmpAsgn[i]].y+=p.y;s[tmpAsgn[i]].n++;});
+        let moved=false;
+        tmpCts.forEach((c,k)=>{if(s[k].n>0){const nx=s[k].x/s[k].n,ny=s[k].y/s[k].n;if(Math.hypot(nx-c.x,ny-c.y)>0.01)moved=true;c.x=nx;c.y=ny;}});
+        if(!moved) break;
+      }
+      panelData[l].snapshots=snapshots;
+      panelData[l].finalCts=tmpCts.map(c=>({...c}));
+      panelData[l].finalAsgn=[...tmpAsgn];
+      // 计算残差用于下一层
+      curPts=curPts.map((p,i)=>({x:p.x-tmpCts[tmpAsgn[i]].x,y:p.y-tmpCts[tmpAsgn[i]].y}));
+    }
+    layerStep=0;
+    ['kmp0','kmp1','kmp2','kmp3'].forEach(id=>document.getElementById(id).className='rq-panel');
+    ['kms0','kms1','kms2','kms3'].forEach((id,i)=>{
+      document.getElementById(id).textContent=i===0?'固定（预训练输出）':'—';
+    });
+  }
+
+  // 画单个面板：显示pts和cts聚类结果
+  function drawPanel(ci,pd,label,showIter){
+    const ctx=ctxs[ci];
+    ctx.clearRect(0,0,W,H);ctx.fillStyle='#fafafe';ctx.fillRect(0,0,W,H);
+    if(!pd){
+      ctx.fillStyle='rgba(160,160,165,.35)';ctx.font='11px Noto Sans SC,sans-serif';ctx.textAlign='center';
+      ctx.fillText('待计算',W/2,H/2);ctx.textAlign='left';return;
+    }
+    const {pts,cts,asgn}=pd;
+    const npts=normalize(pts);
+    const ncts=normRef(cts,pts);
+    // 连线
+    npts.forEach((p,i)=>{
+      const c=ncts[asgn[i]];
+      ctx.strokeStyle=`rgba(${clrRgb[asgn[i]]},.18)`;ctx.lineWidth=.8;
+      ctx.beginPath();ctx.moveTo(p.x,p.y);ctx.lineTo(c.x,c.y);ctx.stroke();
+    });
+    // 数据点
+    npts.forEach((p,i)=>{
+      ctx.beginPath();ctx.arc(p.x,p.y,4,0,Math.PI*2);
+      ctx.fillStyle=`rgba(${clrRgb[asgn[i]]},.78)`;ctx.fill();
+    });
+    // 聚类中心（圆形，边框更粗）
+    ncts.forEach((c,k)=>{
+      ctx.beginPath();ctx.arc(c.x,c.y,8,0,Math.PI*2);
+      ctx.fillStyle=`rgba(${clrRgb[k]},.22)`;ctx.strokeStyle=`rgba(${clrRgb[k]},1)`;ctx.lineWidth=2.5;
+      ctx.fill();ctx.stroke();
+    });
+    // iter 标注
+    ctx.fillStyle='rgba(110,110,115,.55)';ctx.font='bold 10px JetBrains Mono';ctx.fillText(label,8,14);
+    if(showIter!==undefined){
+      ctx.font='10px JetBrains Mono';ctx.fillStyle='rgba(48,185,80,.85)';
+      ctx.fillText('Iter '+showIter,8,H-8);
+    }
+  }
+
+  function drawAllPanels(){
+    // L0: 原始，始终显示（当前聚类进度）
+    if(layerStep>=0){
+      const pd=panelData[0];
+      drawPanel(0,{pts:pd.pts,cts:pd.finalCts,asgn:pd.finalAsgn},'L0',pd.snapshots.length);
+    }
+    for(let l=1;l<=LAYERS;l++){
+      if(layerStep>=l){
+        const pd=panelData[l];
+        drawPanel(l,{pts:pd.pts,cts:pd.finalCts,asgn:pd.finalAsgn},'L'+l,pd.snapshots.length);
+      } else {
+        ctxs[l].clearRect(0,0,W,H);ctxs[l].fillStyle='#fafafe';ctxs[l].fillRect(0,0,W,H);
+        ctxs[l].fillStyle='rgba(160,160,165,.35)';ctxs[l].font='11px Noto Sans SC,sans-serif';ctxs[l].textAlign='center';
+        ctxs[l].fillText('待计算',W/2,H/2);ctxs[l].textAlign='left';
+      }
+    }
+  }
+
+  // 逐帧播放某个面板的 K-Means 迭代动画，完成后回调
+  function animatePanel(li,cb){
+    const pd=panelData[li];
+    const snaps=pd.snapshots;
+    let si=0;
+    const tick=()=>{
+      if(si>=snaps.length){cb&&cb();return;}
+      const snap=snaps[si++];
+      const avgD=pd.pts.reduce((s,p,i)=>s+Math.hypot(p.x-snap.cts[snap.asgn[i]].x,p.y-snap.cts[snap.asgn[i]].y),0)/pd.pts.length;
+      drawPanel(li,{pts:pd.pts,cts:snap.cts,asgn:snap.asgn},'L'+li,si);
+      const sid='kms'+li;document.getElementById(sid).textContent=`Iter ${si}  误差: ${avgD.toFixed(2)}`;
+      setTimeout(tick,140);
+    };
+    tick();
+  }
+
+  function nextLayer(){
+    if(layerStep>LAYERS){stop();document.getElementById('b2run').textContent='✓ 完成';return;}
+    const li=layerStep;
+    // 高亮当前面板
+    document.getElementById('kmp'+li).classList.add('active-panel');
+    if(li>0) document.getElementById('kmp'+(li-1)).className='rq-panel done-panel';
+    document.getElementById('si2').textContent='Layer '+li+' / '+LAYERS;
+    document.getElementById('pf2').style.width=((li)/(LAYERS+1)*100)+'%';
+
+    animatePanel(li,()=>{
+      // 播完，标记done
+      document.getElementById('kmp'+li).className='rq-panel done-panel';
+      const pd=panelData[li];
+      const avgD=pd.pts.reduce((s,p,i)=>s+Math.hypot(p.x-pd.finalCts[pd.finalAsgn[i]].x,p.y-pd.finalCts[pd.finalAsgn[i]].y),0)/pd.pts.length;
+      document.getElementById('kms'+li).textContent=`收敛  误差: ${avgD.toFixed(2)}`;
+      layerStep++;
+      if(layerStep>LAYERS){
+        stop();document.getElementById('b2run').textContent='✓ 完成';
+        document.getElementById('si2').textContent='Layer '+LAYERS+' / '+LAYERS;
+        document.getElementById('pf2').style.width='100%';
+      } else if(run){
+        tmr=setTimeout(nextLayer,400);
+      }
+    });
+  }
+
+  function start(){if(run)return;run=true;nextLayer();}
+  function stop(){run=false;clearTimeout(tmr);}
+  function reset(){
+    stop();init();drawAllPanels();
+    document.getElementById('si2').textContent='Layer 0 / 3';
+    document.getElementById('pf2').style.width='0%';
+  }
+
+  document.getElementById('b2run').onclick=()=>{
+    if(layerStep>LAYERS){reset();setTimeout(()=>{start();document.getElementById('b2run').textContent='⏸ 暂停';},100);return;}
+    if(run){stop();document.getElementById('b2run').textContent='▶ 继续';}
+    else{start();document.getElementById('b2run').textContent='⏸ 暂停';}
+  };
+  document.getElementById('b2rst').onclick=()=>{reset();document.getElementById('b2run').textContent='▶ 逐层聚类';};
+  init();
+  // 初始只画L0原始点（未聚类）
+  const pd0=panelData[0];
+  drawPanel(0,{pts:pd0.pts,cts:pd0.snapshots[0].cts,asgn:pd0.snapshots[0].asgn},'L0');
+  for(let l=1;l<=LAYERS;l++){
+    ctxs[l].fillStyle='#fafafe';ctxs[l].fillRect(0,0,W,H);
+    ctxs[l].fillStyle='rgba(160,160,165,.35)';ctxs[l].font='11px Noto Sans SC,sans-serif';ctxs[l].textAlign='center';
+    ctxs[l].fillText('待计算',W/2,H/2);ctxs[l].textAlign='left';
+  }
+})();
+</script>
+</body>
+</html>
