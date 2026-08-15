@@ -179,8 +179,8 @@ hr{border:none;border-top:1px solid var(--border);margin:52px 0;}
   <h3>基础定义</h3>
   <p>Critic 输出的价值函数 $V(s_t)$ 是对"从当前位置出发，能获得多少期望奖励"的估计。优势 $A_t$ 衡量实际结果比估计好多少：</p>
   <div class="math-block">
-    $$A_t = r_t - V(s_t)$$
-    <div class="math-label">基础优势估计（实际回报 − 基线）</div>
+    $$A_t = R_T - V(s_t)$$
+    <div class="math-label">基础优势估计（实际回报 − 基线）；$R_T$ 为序列末尾的实际回报（RLHF 中奖励仅在末尾给出）</div>
   </div>
   <p>$A_t > 0$：这个 Token 的选择比预期好，PPO 应该提高它的概率。$A_t < 0$：比预期差，应该降低它的概率。$A_t$ 的绝对值决定更新力度。</p>
 
@@ -269,15 +269,15 @@ hr{border:none;border-top:1px solid var(--border);margin:52px 0;}
   <h3>Actor 更新</h3>
   <p>对 Actor 做梯度上升（最大化目标），同时加入熵正则化防止策略退化成确定性输出：</p>
   <div class="math-block">
-    $$L^{\text{Actor}} = L^{\text{CLIP}}(\theta) - \beta \cdot \mathbb{E}_t\!\left[\text{KL}\right] + c_{\text{ent}} \cdot H(\pi_\theta)$$
-    <div class="math-label">$H(\pi_\theta)$ 为策略熵；$c_{\text{ent}}$ 通常取 0.01 量级</div>
+    $$L^{\text{Actor}} = L^{\text{CLIP}}(\theta) + c_{\text{ent}} \cdot H(\pi_\theta)$$
+    <div class="math-label">$H(\pi_\theta)$ 为策略熵；$c_{\text{ent}}$ 通常取 0.01 量级；KL 惩罚已在第 6 节的调整后奖励 $r_t^{\text{adj}}$ 中体现，不在此项重复计入</div>
   </div>
 
   <h3>Critic 更新</h3>
   <p>Critic 通过最小化预测价值与实际回报之间的均方误差来更新，让 $V(s_t)$ 越来越准：</p>
   <div class="math-block">
     $$L^{\text{Critic}} = \mathbb{E}_t\!\left[\left(V_\phi(s_t) - V_t^{\text{target}}\right)^2\right]$$
-    <div class="math-label">$V_t^{\text{target}}$ 由 GAE 计算得到的实际回报估计</div>
+    <div class="math-label">$V_t^{\text{target}} = V(s_t) + A_t^{\text{GAE}}$（GAE 优势 + 当前价値估计），等价于折扣回报的 TD 目标估计</div>
   </div>
   <p>两个损失分别反向传播，Actor 和 Critic 使用各自的优化器更新。实践中也有共享底层参数的设计（节省显存），此时两个损失加权合并。</p>
   <div class="callout green"><strong>为什么要多轮更新同一批数据（PPO 的 Epoch）：</strong>收集一批 Rollout 的代价很高（需要推理），PPO 允许对同一批数据更新多次，提高数据利用率。但更新轮数不能太多，否则 $r_t(\theta)$ 偏离 1 太远，Clip 就失去意义了。</div>

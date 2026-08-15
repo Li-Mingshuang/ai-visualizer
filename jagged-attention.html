@@ -204,8 +204,8 @@ hr{border:none;border-top:1px solid var(--border);margin:52px 0;}
 
   <p>这种掩码结构决定了注意力矩阵 $\mathbf{A}$ 是块对角的：</p>
   <div class="math-block">
-    $$\mathbf{A} = \begin{pmatrix} \mathbf{A}_1 & \mathbf{0} & \mathbf{0} \\ \mathbf{0} & \mathbf{A}_2 & \mathbf{0} \\ \mathbf{0} & \mathbf{0} & \mathbf{A}_3 \end{pmatrix}$$
-    <div class="math-label">$\mathbf{A}_i$ = 第 $i$ 条序列内部的注意力矩阵；块外全为 0（不 attend）</div>
+$$\mathbf{A} = \begin{pmatrix} \mathbf{A}_1 & \mathbf{0} & \mathbf{0} & \mathbf{0} \\ \mathbf{0} & \mathbf{A}_2 & \mathbf{0} & \mathbf{0} \\ \mathbf{0} & \mathbf{0} & \mathbf{A}_3 & \mathbf{0} \\ \mathbf{0} & \mathbf{0} & \mathbf{0} & \mathbf{A}_4 \end{pmatrix}$$
+<div class="math-label">$\mathbf{A}_i$ = 第 $i$ 条序列内部的注意力矩阵（大小为 $l_i \times l_i$）；块外全为 0（不 attend）</div>
   </div>
 </section>
 
@@ -314,8 +314,8 @@ hr{border:none;border-top:1px solid var(--border);margin:52px 0;}
   <div class="math-block" style="text-align:left;">
     <pre style="font-family:monospace;font-size:13px;color:var(--text2);line-height:1.8;">for kv_start in range(0, <span style="color:var(--red)">total_len</span>, BLOCK_SIZE):
     scores += Q[q_start:q_end] @ K[kv_start:kv_end].T
-    # ↑ 遍历所有 K/V，包括其他序列的</pre>
-    <div class="math-label">计算量 ∝ total_len² = (Σlᵢ)²，包含大量无用的跨序列计算</div>
+    # ↑ 遍历所有 K/V，包括其他序列的（就算加了 block-diagonal mask，跨序列的 QK 乘法仍然被执行）</pre>
+    <div class="math-label">执行的 QK 乘法次数 ∝ (total_len)² = (Σlᵢ)²；其中属于同一序列的部分有意义，跨序列的部分虚耗了计算资源</div>
   </div>
 
   <h3>Varlen FlashAttention：只扫描本序列</h3>

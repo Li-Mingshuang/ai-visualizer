@@ -133,8 +133,8 @@ code{font-family:monospace;background:var(--bg2);padding:1px 5px;border-radius:3
   </div>
 
   <div class="math-block">
-    $$\text{HBM IO} = O(N^2 d) \text{（读 Q,K,V）} + O(N^2) \text{（写 S）} + O(N^2) \text{（读 S 写 P）} + O(N^2 d) \text{（写 O）}$$
-    <div class="math-label">主项是 $O(N^2)$，对长序列代价极高</div>
+$$\text{HBM IO} = \underbrace{O(Nd)}_{\text{读 Q,K,V}} + \underbrace{O(N^2)}_{\text{写 S}} + \underbrace{O(N^2)}_{\text{读 S 写 P}} + \underbrace{O(Nd)}_{\text{写 O}}$$
+<div class="math-label">Q, K, V, O 各自是 $N \times d$ 矩阵（IO $O(Nd)$）；中间注意力矩阵 S, P 各是 $N \times N$（IO $O(N^2)$）；主项 $O(N^2)$</div>
   </div>
 </section>
 
@@ -267,7 +267,7 @@ function drawMem(){
   ctx.fillStyle='#10B981';ctx.font='bold 13px sans-serif';ctx.textAlign='center';
   ctx.fillText('SRAM（片上缓存）',W/2,48);
   ctx.fillStyle='#9CA3AF';ctx.font='11px sans-serif';
-  ctx.fillText('容量：~20MB / GPU SM  |  带宽：~19TB/s',W/2,64);
+  ctx.fillText('容量：~40-50MB（全芯片，≈200KB/SM）  |  带宽：~19TB/s',W/2,64);
 
   // 箭头
   ctx.strokeStyle='#9CA3AF';ctx.lineWidth=2;

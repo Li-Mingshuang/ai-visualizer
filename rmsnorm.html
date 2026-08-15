@@ -138,9 +138,9 @@ hr{border:none;border-top:1px solid var(--border);margin:52px 0;}
   <h2>3 &nbsp;RMSNorm：去掉均值中心化</h2>
   <p>RMSNorm 的出发点是：<strong>中心化（减均值）对训练稳定性的贡献其实不大</strong>，真正重要的是控制激活值的<strong>尺度（Scale）</strong>。所以直接去掉减均值这一步，只保留尺度归一化：</p>
   <div class="math-block">
-    $$\text{RMS}(\mathbf{x}) = \sqrt{\frac{1}{d}\sum_{i=1}^d x_i^2}$$
+    $$\text{RMS}(\mathbf{x}) = \sqrt{\frac{1}{d}\sum_{i=1}^d x_i^2 + \varepsilon}$$
     $$\text{RMSNorm}(\mathbf{x}) = \frac{\mathbf{x}}{\text{RMS}(\mathbf{x})} \cdot \gamma$$
-    <div class="math-label">只有 γ 一个可学习参数，没有 β；不减均值，直接除以 RMS</div>
+    <div class="math-label">只有 $\gamma$ 一个可学习参数，没有 $\beta$；$\varepsilon$（如 $10^{-6}$）防止除零；不减均值，直接除以 RMS</div>
   </div>
 
   <div class="two-col">
